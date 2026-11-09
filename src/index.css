@@ -1,0 +1,22 @@
+:root[data-color-mode="light"] {
+  color-scheme: light;
+}
+:root[data-color-mode="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bgColor-default);
+  color: var(--fgColor-default);
+  font-family: var(--fontStack-normal, -apple-system, "Segoe UI", sans-serif);
+}
+
+/* flat like github.com — no drop/inset shadows on buttons */
+button {
+  box-shadow: none !important;
+}
+button:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, var(--fgColor-accent));
+  outline-offset: 1px;
+}

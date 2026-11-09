@@ -1,0 +1,342 @@
+import type { CommitSample } from "./estimate";
+
+const API = "https://api.github.com";
+/** stop paginating after this many commits; GitHub's list endpoint degrades far past it */
+const MAX_COMMITS = 10000;
+
+export interface RepoInfo {
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  stars: number;
+  forks: number;
+  openIssues: number;
+  watchers: number;
+  defaultBranch: string;
+  createdAt: string;
+  pushedAt: string;
+  homepage: string | null;
+  license: string | null;
+  sizeKb: number;
+}
+
+export class GitHubError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/** Accepts "owner/repo", "github.com/owner/repo", or a full URL. */
+export function parseRepo(input: string): { owner: string; repo: string } | null {
+  const cleaned = input
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/^github\.com\//, "")
+    .replace(/\.git$/, "")
+    .replace(/\/$/, "");
+  const m = cleaned.match(/^([\w.-]+)\/([\w.-]+)$/);
+  if (!m) return null;
+  return { owner: m[1], repo: m[2] };
+}
+
+function headers(token?: string): HeadersInit {
+  const h: HeadersInit = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (token) h.Authorization = `Bearer ${token}`;
+  return h;
+}
+
+async function check(res: Response): Promise<void> {
+  if (res.ok) return;
+  if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
+    const reset = Number(res.headers.get("x-ratelimit-reset") ?? 0) * 1000;
+    const when = new Date(reset).toLocaleTimeString();
+    throw new GitHubError(
+      `GitHub rate limit reached — resets at ${when}. Add a token to continue.`,
+      403,
+    );
+  }
+  if (res.status === 404)
+    throw new GitHubError("Repository not found — check the name or add a token for private repos.", 404);
+  if (res.status === 409) throw new GitHubError("This repository is empty.", 409);
+  throw new GitHubError(`GitHub API error (${res.status}).`, res.status);
+}
+
+export async function fetchRepo(owner: string, repo: string, token?: string): Promise<RepoInfo> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}`, { headers: headers(token) });
+  await check(res);
+  const j = (await res.json()) as {
+    full_name: string;
+    description: string | null;
+    stargazers_count: number;
+    forks_count: number;
+    open_issues_count: number;
+    watchers_count: number;
+    default_branch: string;
+    created_at: string;
+    pushed_at: string;
+    homepage: string | null;
+    license: { spdx_id?: string } | null;
+    size: number;
+  };
+  return {
+    owner,
+    name: repo,
+    fullName: j.full_name,
+    description: j.description,
+    stars: j.stargazers_count,
+    forks: j.forks_count,
+    openIssues: j.open_issues_count,
+    watchers: j.watchers_count,
+    defaultBranch: j.default_branch,
+    createdAt: j.created_at,
+    pushedAt: j.pushed_at,
+    homepage: j.homepage,
+    license: j.license?.spdx_id ?? null,
+    sizeKb: j.size,
+  };
+}
+
+interface CommitEntry {
+  sha?: string;
+  author?: { login?: string; avatar_url?: string } | null;
+  committer?: { login?: string; avatar_url?: string } | null;
+  commit: {
+    author?: { name?: string; email?: string; date?: string };
+    committer?: { name?: string; email?: string };
+    message?: string;
+  };
+}
+
+interface Page1Response {
+  link: string | null;
+  data: CommitEntry[];
+}
+
+export interface CommitsResult {
+  commits: CommitSample[];
+  /** exact total commits on the default branch (from pagination Link header) */
+  totalCommits: number;
+  /** true when totalCommits exceeds what we fetched */
+  capped: boolean;
+}
+
+const CONCURRENCY = 6;
+
+function parseLastPage(link: string | null): number | null {
+  const m = link?.match(/[?&]page=(\d+)>;\s*rel="last"/);
+  return m ? Number(m[1]) : null;
+}
+
+function toSample(c: CommitEntry): CommitSample | null {
+  const date = c.commit.author?.date;
+  if (!date) return null;
+  return {
+    authorDate: date,
+    author: c.author?.login ?? c.commit.author?.name ?? "unknown",
+    authorAvatar: c.author?.avatar_url,
+    authorEmail: c.commit.author?.email,
+    committer: c.committer?.login ?? c.commit.committer?.name,
+    committerAvatar: c.committer?.avatar_url,
+    committerEmail: c.commit.committer?.email,
+    message: c.commit.message,
+    sha: c.sha,
+  };
+}
+
+async function fetchCommitPage(
+  owner: string,
+  repo: string,
+  page: number,
+  perPage: number,
+  token?: string,
+): Promise<Page1Response> {
+  const res = await fetch(
+    `${API}/repos/${owner}/${repo}/commits?per_page=${perPage}&page=${page}`,
+    { headers: headers(token) },
+  );
+  await check(res);
+  return { link: res.headers.get("link"), data: (await res.json()) as CommitEntry[] };
+}
+
+const cacheKey = (o: string, r: string) => `ge_cache_v2:${o}/${r}`;
+
+/**
+ * Probes the real commit count with a single per_page=1 request (the Link
+ * "last" page number equals the commit count), validates the session cache
+ * against the head sha, then downloads remaining pages in parallel batches.
+ * Uses the *author* date — it records when the work was written.
+ */
+export async function fetchCommits(
+  owner: string,
+  repo: string,
+  token: string | undefined,
+  onProgress?: (fetched: number, target: number, total: number) => void,
+): Promise<CommitsResult> {
+  const probe = await fetchCommitPage(owner, repo, 1, 1, token);
+  const headSha = probe.data[0]?.sha;
+  const totalCommits = parseLastPage(probe.link) ?? probe.data.length;
+  const target = Math.min(totalCommits, MAX_COMMITS);
+  const totalPages = Math.ceil(target / 100);
+
+  // session cache — valid while the branch head is unchanged
+  const key = cacheKey(owner, repo);
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
+      headSha?: string;
+      commits?: CommitSample[];
+    } | null;
+    if (cached?.headSha && cached.headSha === headSha && cached.commits?.length) {
+      onProgress?.(cached.commits.length, target, totalCommits);
+      return { commits: cached.commits, totalCommits, capped: totalCommits > MAX_COMMITS };
+    }
+  } catch {
+    /* ignore corrupt cache */
+  }
+
+  const out: CommitSample[] = [];
+  const first = await fetchCommitPage(owner, repo, 1, 100, token);
+  for (const c of first.data) {
+    const s = toSample(c);
+    if (s) out.push(s);
+  }
+  onProgress?.(out.length, target, totalCommits);
+
+  for (let start = 2; start <= totalPages; start += CONCURRENCY) {
+    const pages = Array.from(
+      { length: Math.min(CONCURRENCY, totalPages - start + 1) },
+      (_, i) => start + i,
+    );
+    const results = await Promise.all(
+      pages.map((p) => fetchCommitPage(owner, repo, p, 100, token)),
+    );
+    for (const r of results)
+      for (const c of r.data) {
+        const s = toSample(c);
+        if (s) out.push(s);
+      }
+    onProgress?.(out.length, target, totalCommits);
+  }
+
+  try {
+    if (out.length) sessionStorage.setItem(key, JSON.stringify({ headSha, commits: out }));
+  } catch {
+    /* quota — cache is best-effort */
+  }
+  return { commits: out, totalCommits, capped: totalCommits > MAX_COMMITS };
+}
+
+const GRAPHQL_ENRICH_MAX = 4000;
+const GRAPHQL_BATCH = 50;
+
+/**
+ * Fills additions/deletions/changedFiles on fetched commits via GraphQL
+ * `object(oid:)` aliased batches — ~50 commits per query, 6 in flight.
+ * Requires a token (GraphQL has no anonymous tier); fails soft — batches
+ * that error are simply skipped, commits keep undefined stats.
+ */
+export async function enrichCommitStats(
+  owner: string,
+  repo: string,
+  commits: CommitSample[],
+  token: string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
+  const targets = commits.filter((c) => c.sha).slice(0, GRAPHQL_ENRICH_MAX);
+  const batches: CommitSample[][] = [];
+  for (let i = 0; i < targets.length; i += GRAPHQL_BATCH)
+    batches.push(targets.slice(i, i + GRAPHQL_BATCH));
+
+  let enriched = 0;
+  let done = 0;
+  for (let s = 0; s < batches.length; s += CONCURRENCY) {
+    await Promise.all(
+      batches.slice(s, s + CONCURRENCY).map(async (batch) => {
+        try {
+          const fields = batch
+            .map(
+              (c, i) =>
+                `o${i}: object(oid: "${c.sha}") { ...on Commit { oid additions deletions changedFilesIfAvailable } }`,
+            )
+            .join("\n");
+          const res = await fetch(`${API}/graphql`, {
+            method: "POST",
+            headers: { ...headers(token), "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${fields}}}`,
+              variables: { owner, name: repo },
+            }),
+          });
+          if (!res.ok) return;
+          const j = await res.json();
+          const objects = j.data?.repository;
+          if (!objects) return;
+          for (let i = 0; i < batch.length; i++) {
+            const o = objects[`o${i}`];
+            if (!o) continue;
+            batch[i].additions = o.additions ?? 0;
+            batch[i].deletions = o.deletions ?? 0;
+            batch[i].changedFiles = o.changedFilesIfAvailable;
+            enriched++;
+          }
+        } catch {
+          /* skip failed batch — partial stats still useful */
+        }
+      }),
+    );
+    done += Math.min(CONCURRENCY, batches.length - s);
+    onProgress?.(Math.min(done * GRAPHQL_BATCH, targets.length), targets.length);
+  }
+  return enriched;
+}
+
+/** Weekly [additions, deletions] per GitHub's stats; returns null when not yet computed. */
+export async function fetchCodeFrequency(
+  owner: string,
+  repo: string,
+  token?: string,
+): Promise<Array<[number, number, number]> | null> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/stats/code_frequency`, {
+    headers: headers(token),
+  });
+  await check(res);
+  if (res.status === 202) return null;
+  const j = (await res.json()) as Array<[number, number, number]>;
+  return Array.isArray(j) ? j : null;
+}
+
+/** language name -> byte count */
+export async function fetchLanguages(
+  owner: string,
+  repo: string,
+  token?: string,
+): Promise<Record<string, number>> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/languages`, {
+    headers: headers(token),
+  });
+  await check(res);
+  return (await res.json()) as Record<string, number>;
+}
+
+/** Recursive file list of the default branch — one call, used for AI-tooling markers. */
+export async function fetchFilePaths(
+  owner: string,
+  repo: string,
+  branch: string,
+  token?: string,
+): Promise<string[]> {
+  const res = await fetch(
+    `${API}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+    { headers: headers(token) },
+  );
+  await check(res);
+  const j = (await res.json()) as { tree?: Array<{ path?: string }> };
+  return (j.tree ?? []).flatMap((e) => (e.path ? [e.path] : []));
+}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // apply saved color mode before first paint (same attrs github.com uses)
+      (function () {
+        var d = document.documentElement;
+        d.dataset.colorMode = localStorage.getItem("color-mode") || "auto";
+        d.dataset.lightTheme = "light";
+        d.dataset.darkTheme = "dark";
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitEstimate — how long did this repo take?</title>
+    <meta
+      name="description"
+      content="Estimate how much time was spent building a GitHub repository from its commit history."
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

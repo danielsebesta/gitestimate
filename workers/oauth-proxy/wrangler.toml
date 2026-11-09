@@ -1,0 +1,7 @@
+name = "gitestimate-oauth-proxy"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+account_id = "44dc71c3431079f4a65438899d9baeef"
+
+# deploy: npx wrangler deploy
+# then set VITE_OAUTH_PROXY=https://gitestimate-oauth-proxy.<you>.workers.dev
