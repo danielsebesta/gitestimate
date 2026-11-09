@@ -12,16 +12,7 @@ import {
   Select,
   Text,
 } from "@primer/react";
-import {
-  CheckIcon,
-  CopilotIcon,
-  DownloadIcon,
-  GitCommitIcon,
-  LinkIcon,
-  PersonIcon,
-  RepoForkedIcon,
-  StarIcon,
-} from "@primer/octicons-react";
+import { Bot, Check, Download, GitCommit, GitFork, Link2, Star, User } from "lucide-react";
 import {
   authorIdentity,
   estimate,
@@ -30,7 +21,7 @@ import {
   type EstimateResult,
 } from "../lib/estimate";
 import type { RepoInfo } from "../lib/github";
-import { detectCommit } from "../lib/agents";
+import { detectCommit, stripBotSuffix, summarizeAgents } from "../lib/agents";
 import { computeStats } from "../lib/stats";
 import { authorsCsv, downloadText, sessionsCsv } from "../lib/export";
 import Timeline from "./Timeline";
@@ -41,6 +32,7 @@ import LanguageBar from "./LanguageBar";
 import CommitList from "./CommitList";
 import SessionList from "./SessionList";
 import AuthorsList from "./AuthorsList";
+import AgentsPanel from "./AgentsPanel";
 import { StatGrid, StatCard } from "./StatGrid";
 
 export interface DoneState {
@@ -77,24 +69,16 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
 
 export default function ResultsPanel({
   data,
-  gap,
-  credit,
+  viewerLogin,
 }: {
   data: DoneState;
-  /** session gap minutes */
-  gap: number;
-  /** session credit minutes */
-  credit: number;
+  /** signed-in login for “You” badges on matching authors */
+  viewerLogin?: string | null;
 }) {
   const [authorFilter, setAuthorFilter] = useState("all");
   const [copied, setCopied] = useState<"link" | "badge" | null>(null);
 
-  const opts = useMemo(
-    () => ({ sessionGapMinutes: gap, sessionCreditMinutes: credit }),
-    [gap, credit],
-  );
-
-  const allResult = useMemo(() => estimate(data.commits, opts), [data.commits, opts]);
+  const allResult = useMemo(() => estimate(data.commits), [data.commits]);
   const filteredCommits = useMemo(
     () =>
       authorFilter === "all"
@@ -103,12 +87,22 @@ export default function ResultsPanel({
     [data.commits, authorFilter],
   );
   const result: EstimateResult | null = useMemo(
-    () => estimate(filteredCommits, opts) ?? allResult,
-    [filteredCommits, opts, allResult],
+    () => estimate(filteredCommits) ?? allResult,
+    [filteredCommits, allResult],
   );
   const stats = useMemo(
     () => computeStats(filteredCommits, (c) => detectCommit(c)?.strength === "authored"),
     [filteredCommits],
+  );
+  const agentUsage = useMemo(
+    () => summarizeAgents(filteredCommits, { branch: data.branch }),
+    [filteredCommits, data.branch],
+  );
+  const suspectedCount = useMemo(
+    () =>
+      filteredCommits.filter((c) => detectCommit(c, { branch: data.branch, patch: c.patch })?.strength === "suspected")
+        .length,
+    [filteredCommits, data.branch],
   );
 
   const copyShare = useCallback(
@@ -142,8 +136,6 @@ export default function ResultsPanel({
           branch: data.branch,
           generatedAt: new Date().toISOString(),
           params: {
-            sessionGapMinutes: gap,
-            sessionCreditMinutes: credit,
             author: authorFilter === "all" ? undefined : authorFilter,
           },
           totals: {
@@ -168,7 +160,7 @@ export default function ResultsPanel({
       ),
       "application/json",
     );
-  }, [data, filteredCommits, result, gap, credit, authorFilter, slug]);
+  }, [data, filteredCommits, result, authorFilter, slug]);
 
   const exportSessions = useCallback(() => {
     if (result) downloadText(`gitestimate-${slug}-sessions.csv`, sessionsCsv(result.sessions), "text/csv");
@@ -189,24 +181,50 @@ export default function ResultsPanel({
       )}
       <Box display="flex" alignItems="center" sx={{ gap: 2, mb: 3, flexWrap: "wrap" }}>
         <Label variant="accent">
-          <GitCommitIcon size={12} /> {result.commitCount.toLocaleString()} commits
+          <GitCommit size={12} strokeWidth={2} /> {result.commitCount.toLocaleString()} commits
         </Label>
         <Label variant="accent">
-          <PersonIcon size={12} /> {result.authors.length}{" "}
+          <User size={12} strokeWidth={2} /> {result.authors.length}{" "}
           {result.authors.length === 1 ? "author" : "authors"}
         </Label>
         <Label variant="accent">
-          <StarIcon size={12} /> {data.repo.stars.toLocaleString()}
+          <Star size={12} strokeWidth={2} /> {data.repo.stars.toLocaleString()}
         </Label>
         <Label variant="accent">
-          <RepoForkedIcon size={12} /> {data.repo.forks.toLocaleString()}
+          <GitFork size={12} strokeWidth={2} /> {data.repo.forks.toLocaleString()}
         </Label>
         {data.repo.license && <Label variant="accent">{data.repo.license}</Label>}
         {result.agentCommitCount > 0 && (
           <Label variant="attention">
-            <CopilotIcon size={12} /> {result.agentCommitCount.toLocaleString()} agent-authored
+            <Bot size={12} strokeWidth={2} /> {result.agentCommitCount.toLocaleString()} AI author
           </Label>
         )}
+        {result.assistedCommitCount > 0 && (
+          <Label variant="sponsors">
+            {result.assistedCommitCount.toLocaleString()} AI helped
+          </Label>
+        )}
+        {suspectedCount > 0 && (
+          <Label variant="severe" title="Weak style signals — not proof">
+            {suspectedCount.toLocaleString()} maybe AI
+          </Label>
+        )}
+        {agentUsage.slice(0, 6).map((u) => (
+          <Label key={u.toolId} variant="attention" sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+            {u.avatarUrl ? (
+              <Box
+                as="img"
+                src={u.avatarUrl}
+                alt=""
+                sx={{ width: 12, height: 12, borderRadius: "50%" }}
+              />
+            ) : (
+              <Bot size={12} strokeWidth={2} />
+            )}
+            {u.name}
+            {u.models[0] ? ` · ${u.models[0]}` : ""}
+          </Label>
+        ))}
         {data.aiFiles.map((f) => (
           <Label key={f} variant="sponsors">
             {f}
@@ -216,10 +234,8 @@ export default function ResultsPanel({
 
       {data.capped && (
         <Flash variant="warning" sx={{ mb: 3 }}>
-          History capped: analyzed latest {result.commitCount.toLocaleString()} of ~
-          {data.totalCommits.toLocaleString()} commits (
-          {((result.commitCount / data.totalCommits) * 100).toFixed(1)}%). The estimate
-          reflects only recent activity, not the full repository history.
+          Showing the latest {result.commitCount.toLocaleString()} of about{" "}
+          {data.totalCommits.toLocaleString()} commits. Older history isn’t included.
         </Flash>
       )}
 
@@ -248,7 +264,7 @@ export default function ResultsPanel({
               letterSpacing: "0.5px",
             }}
           >
-            Estimated development time
+            Estimated time
           </Text>
           <Box display="flex" alignItems="center" sx={{ gap: 2, flexWrap: "wrap" }}>
             {allResult && allResult.authors.length > 1 && (
@@ -263,7 +279,7 @@ export default function ResultsPanel({
                   <Select.Option value="all">All authors</Select.Option>
                   {allResult.authors.map((a) => (
                     <Select.Option key={a.author} value={a.author}>
-                      {a.author}
+                      {stripBotSuffix(a.author)}
                     </Select.Option>
                   ))}
                 </Select>
@@ -271,20 +287,20 @@ export default function ResultsPanel({
             )}
             <Button
               size="small"
-              leadingVisual={copied === "link" ? CheckIcon : LinkIcon}
+              leadingVisual={copied === "link" ? Check : Link2}
               onClick={() => copyShare("link")}
             >
               {copied === "link" ? "Copied" : "Copy link"}
             </Button>
             <Button
               size="small"
-              leadingVisual={copied === "badge" ? CheckIcon : LinkIcon}
+              leadingVisual={copied === "badge" ? Check : Link2}
               onClick={() => copyShare("badge")}
             >
               {copied === "badge" ? "Copied" : "Copy badge"}
             </Button>
             <ActionMenu>
-              <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
+              <ActionMenu.Button size="small" leadingVisual={Download}>
                 Export
               </ActionMenu.Button>
               <ActionMenu.Overlay>
@@ -302,9 +318,9 @@ export default function ResultsPanel({
             {formatHours(result.totalMinutes)}
           </Text>
           <Text color="fg.muted">
-            ≈ {(result.totalMinutes / 480).toFixed(0)} working days ·{" "}
+            ≈ {(result.totalMinutes / 480).toFixed(0)} days ·{" "}
             {result.sessionCount.toLocaleString()} sessions
-            {authorFilter !== "all" && ` · ${authorFilter}`}
+            {authorFilter !== "all" && ` · ${stripBotSuffix(authorFilter)}`}
           </Text>
         </Box>
         <Box
@@ -345,7 +361,7 @@ export default function ResultsPanel({
                 mr: 1,
               }}
             />
-            {formatHours(result.humanMinutes)} human-driven (
+            {formatHours(result.humanMinutes)} human (
             {Math.round((result.humanMinutes / result.totalMinutes) * 100)}%)
           </Text>
           {result.agentMinutes > 0 && (
@@ -361,13 +377,13 @@ export default function ResultsPanel({
                   mr: 1,
                 }}
               />
-              {formatHours(result.agentMinutes)} agent-authored (
+              {formatHours(result.agentMinutes)} AI (
               {Math.round((result.agentMinutes / result.totalMinutes) * 100)}%)
             </Text>
           )}
           {result.assistedCommitCount > 0 && (
             <Text size="small" color="fg.muted">
-              + {result.assistedCommitCount.toLocaleString()} commits AI-assisted
+              {result.assistedCommitCount.toLocaleString()} commits with AI trailers
             </Text>
           )}
         </Box>
@@ -517,10 +533,20 @@ export default function ResultsPanel({
       </Section>
 
       <Heading as="h3" sx={{ fontSize: 2, mt: 4, mb: 2 }}>
+        AI tools
+        <CounterLabel sx={{ ml: 2 }}>{agentUsage.length}</CounterLabel>
+      </Heading>
+      <AgentsPanel usage={agentUsage} branch={data.branch} />
+
+      <Heading as="h3" sx={{ fontSize: 2, mt: 4, mb: 2 }}>
         Authors
         <CounterLabel sx={{ ml: 2 }}>{result.authors.length}</CounterLabel>
       </Heading>
-      <AuthorsList authors={result.authors} />
+      <AuthorsList
+        authors={result.authors}
+        commits={filteredCommits}
+        viewerLogin={viewerLogin}
+      />
 
       <Heading as="h3" sx={{ fontSize: 2, mt: 4, mb: 2 }}>
         Recent sessions
@@ -530,18 +556,16 @@ export default function ResultsPanel({
       <Heading as="h3" sx={{ fontSize: 2, mt: 4, mb: 2 }}>
         Recent commits
       </Heading>
-      <CommitList commits={filteredCommits} repoFullName={data.repo.fullName} />
+      <CommitList
+        commits={filteredCommits}
+        repoFullName={data.repo.fullName}
+        branch={data.branch}
+      />
 
       <Text as="p" size="small" color="fg.muted" sx={{ mt: 3 }}>
-        Each author's commits separated by a {gap / 60} h gap form a session; each
-        session is credited its span plus {credit} min of ramp-up — person-hours, so
-        parallel work by different people counts separately. Sessions authored entirely
-        by AI agents are credited at 5 min — the prompt and review time, not typing
-        time. Author dates are used, not push dates.
-        {stats.loc
-          ? " Signed in — per-commit diff stats were fetched, so larger diffs extend the ramp-up credit (+1 min per 30 lines changed, capped at +60)."
-          : " Sign in to fetch per-commit diff stats — larger diffs then extend the ramp-up credit."}{" "}
-        This is an estimate — commits can be squashed, rewritten, or made in bulk.
+        Gaps over ~2 hours start a new session. Human time uses the commit span
+        plus a sized ramp-up; AI sessions use model speed plus a short review.
+        {stats.loc ? "" : " Sign in for better sizing."} Estimates only.
       </Text>
     </Box>
   );

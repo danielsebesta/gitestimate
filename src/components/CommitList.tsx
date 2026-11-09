@@ -1,7 +1,7 @@
 import { Box, Label, Link, Text } from "@primer/react";
-import { CopilotIcon, GitCommitIcon } from "@primer/octicons-react";
+import { Bot, GitCommit } from "lucide-react";
 import type { CommitSample } from "../lib/estimate";
-import { detectCommit } from "../lib/agents";
+import { detectCommit, isBotLogin, stripBotSuffix } from "../lib/agents";
 
 function rel(d: Date): string {
   const s = (Date.now() - d.getTime()) / 1000;
@@ -11,14 +11,22 @@ function rel(d: Date): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function strengthLabel(strength: "authored" | "assisted" | "suspected"): string {
+  if (strength === "authored") return "AI author";
+  if (strength === "assisted") return "AI helped";
+  return "Maybe AI";
+}
+
 /** latest commits, GitHub feed style — subject, sha, author, AI badge */
 export default function CommitList({
   commits,
   repoFullName,
+  branch,
 }: {
   commits: CommitSample[];
   /** owner/repo — links each sha to github.com when provided */
   repoFullName?: string;
+  branch?: string;
 }) {
   const recent = [...commits]
     .filter((c) => !Number.isNaN(new Date(c.authorDate).getTime()))
@@ -28,8 +36,15 @@ export default function CommitList({
   return (
     <Box sx={{ border: "1px solid", borderColor: "border.default", borderRadius: 2 }}>
       {recent.map((c, i) => {
-        const signal = detectCommit(c);
+        const signal = detectCommit(c, { branch, patch: c.patch });
+        const botOnly = !signal && isBotLogin(c.author);
         const subject = (c.message ?? "(no message)").split("\n")[0];
+        const badge =
+          signal?.strength === "authored"
+            ? "attention"
+            : signal?.strength === "suspected"
+              ? "severe"
+              : "default";
         return (
           <Box
             key={c.sha ?? i}
@@ -41,7 +56,7 @@ export default function CommitList({
             sx={{ borderTop: i === 0 ? "none" : "1px solid", borderColor: "border.muted" }}
           >
             <Box display="flex" alignItems="center" sx={{ gap: 2, minWidth: 0 }}>
-              <GitCommitIcon size={14} />
+              <GitCommit size={14} strokeWidth={2} />
               <Text
                 size="small"
                 sx={{
@@ -54,8 +69,33 @@ export default function CommitList({
                 {subject}
               </Text>
               {signal && (
-                <Label size="small" variant={signal.strength === "authored" ? "attention" : "default"}>
-                  <CopilotIcon size={10} /> {signal.strength === "authored" ? "agent" : "AI-assisted"}
+                <Label
+                  size="small"
+                  variant={badge}
+                  title={[signal.tool, signal.model, signal.marker].filter(Boolean).join(" · ")}
+                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+                >
+                  {signal.avatarUrl ? (
+                    <Box
+                      as="img"
+                      src={signal.avatarUrl}
+                      alt=""
+                      sx={{ width: 12, height: 12, borderRadius: "50%" }}
+                    />
+                  ) : (
+                    <Bot size={10} strokeWidth={2} />
+                  )}
+                  {signal.tool ?? strengthLabel(signal.strength)}
+                  {signal.model ? ` · ${signal.model}` : ""}
+                </Label>
+              )}
+              {botOnly && (
+                <Label
+                  size="small"
+                  variant="secondary"
+                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+                >
+                  <Bot size={10} strokeWidth={2} /> Bot
                 </Label>
               )}
             </Box>
@@ -90,7 +130,7 @@ export default function CommitList({
                 color="fg.muted"
                 sx={{ fontSize: 11, display: ["none", "inline"] }}
               >
-                {c.author}
+                {stripBotSuffix(c.author ?? "")}
               </Text>
               <Text size="small" color="fg.muted" sx={{ minWidth: 56, textAlign: "right", fontSize: 11 }}>
                 {rel(new Date(c.authorDate))}

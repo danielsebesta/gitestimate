@@ -1,5 +1,6 @@
 import { Box, Label, Link, Text } from "@primer/react";
-import { CopilotIcon, GitCommitIcon } from "@primer/octicons-react";
+import { Bot, GitCommit } from "lucide-react";
+import { isBotLogin, stripBotSuffix } from "../lib/agents";
 import type { Session } from "../lib/estimate";
 import { formatHours } from "../lib/estimate";
 
@@ -52,7 +53,7 @@ export default function SessionList({
                 }}
               >
                 <Box display="flex" alignItems="center" sx={{ gap: 2, minWidth: 0 }}>
-                  <GitCommitIcon size={14} />
+                  <GitCommit size={14} strokeWidth={2} />
                   <Text size="small" sx={{ whiteSpace: "nowrap" }}>
                     {fmtTime(s.start)} → {fmtTime(s.end)}
                   </Text>
@@ -84,19 +85,46 @@ export default function SessionList({
                         display: ["none", "inline"],
                       }}
                     >
-                      {s.author}
+                      {stripBotSuffix(s.author)}
                     </Text>
                   )}
+                  {s.author && isBotLogin(s.author) && !s.agentOnly && (
+                    <Label
+                      size="small"
+                      variant="secondary"
+                      sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}
+                    >
+                      <Bot size={10} strokeWidth={2} /> Bot
+                    </Label>
+                  )}
                   {s.agentOnly && (
-                    <Label size="small" variant="attention">
-                      <CopilotIcon size={10} /> agent
+                    <Label
+                      size="small"
+                      variant="attention"
+                      title="Timed from model speed, not human hours"
+                    >
+                      <Bot size={10} strokeWidth={2} /> AI
                     </Label>
                   )}
                 </Box>
                 <Box display="flex" alignItems="center" sx={{ gap: 3 }}>
                   <Text size="small" color="fg.muted" sx={{ whiteSpace: "nowrap" }}>
                     {s.commitCount} commit{s.commitCount === 1 ? "" : "s"}
+                    {s.sized && s.churn !== undefined && (
+                      <>
+                        {" "}
+                        · ±{Math.round(s.churn).toLocaleString()}
+                        {s.changedFiles !== undefined && s.changedFiles > 0
+                          ? ` / ${s.changedFiles} file${s.changedFiles === 1 ? "" : "s"}`
+                          : ""}
+                      </>
+                    )}
                   </Text>
+                  {s.sized && (s.churn ?? 0) <= 5 && (
+                    <Label size="small" variant="default" title="Small diff — short ramp-up">
+                      tiny
+                    </Label>
+                  )}
                   <Text size="small" sx={{ fontWeight: 600, minWidth: 56, textAlign: "right" }}>
                     {formatHours(s.minutes)}
                   </Text>

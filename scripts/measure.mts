@@ -30,7 +30,7 @@ if (!r) {
 }
 const aiFiles = detectFiles(paths);
 console.log(
-  `\n${repo.fullName} (★${repo.stars}) | ${formatHours(r.totalMinutes)} over ` +
+  `\n${repo.fullName} (${repo.stars} stars) | ${formatHours(r.totalMinutes)} over ` +
     `${r.sessionCount} sessions, ${r.commitCount} commits, ${r.authors.length} authors`,
 );
 console.log(

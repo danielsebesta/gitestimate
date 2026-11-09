@@ -21,6 +21,13 @@ export interface RepoInfo {
   sizeKb: number;
 }
 
+export interface GitHubUser {
+  login: string;
+  name: string | null;
+  avatarUrl: string;
+  htmlUrl: string;
+}
+
 export class GitHubError extends Error {
   constructor(
     message: string,
@@ -28,6 +35,30 @@ export class GitHubError extends Error {
   ) {
     super(message);
   }
+}
+
+/** Authenticated user for the given token (`GET /user`). */
+export async function fetchViewer(
+  token: string,
+  signal?: AbortSignal,
+): Promise<GitHubUser> {
+  const res = await fetch(`${API}/user`, {
+    headers: headers(token),
+    signal,
+  });
+  await check(res);
+  const j = (await res.json()) as {
+    login: string;
+    name?: string | null;
+    avatar_url: string;
+    html_url: string;
+  };
+  return {
+    login: j.login,
+    name: j.name ?? null,
+    avatarUrl: j.avatar_url,
+    htmlUrl: j.html_url,
+  };
 }
 
 /** true for fetch rejections caused by AbortSignal — callers should ignore these */
@@ -143,8 +174,12 @@ export interface CommitsResult {
 
 const CONCURRENCY = 6;
 
-function parseLastPage(link: string | null): number | null {
-  const m = link?.match(/[?&]page=(\d+)>;\s*rel="last"/);
+/** Parse GitHub Link `rel="last"` page number — format varies slightly by proxy. */
+export function parseLastPage(link: string | null): number | null {
+  if (!link) return null;
+  const m =
+    link.match(/[?&]page=(\d+)[^>]*>;\s*rel="?last"?/i) ??
+    link.match(/rel="?last"?[^<]*<[^>]*[?&]page=(\d+)/i);
   return m ? Number(m[1]) : null;
 }
 
@@ -186,10 +221,10 @@ async function fetchCommitPage(
 const cacheKey = (o: string, r: string, sha?: string) => `ge_cache_v2:${o}/${r}@${sha ?? ""}`;
 
 /**
- * Probes the real commit count with a single per_page=1 request (the Link
- * "last" page number equals the commit count), validates the session cache
- * against the head sha, then downloads remaining pages in parallel batches.
- * Uses the *author* date — it records when the work was written.
+ * Probes head sha (and exact count when Link is visible on per_page=1),
+ * validates the session cache, then downloads pages in parallel.
+ * If Link is missing (CORS/proxy), walks pages until a short page instead of
+ * trusting probe.data.length === 1 — that used to show "97 / 1" in the UI.
  */
 export interface FetchCommitsOptions {
   /** branch, tag or commit sha to list commits for (default: the repo's default branch) */
@@ -208,11 +243,9 @@ export async function fetchCommits(
   const signal = opts?.signal;
   const probe = await fetchCommitPage(owner, repo, 1, 1, token, sha, signal);
   const headSha = probe.data[0]?.sha;
-  const totalCommits = parseLastPage(probe.link) ?? probe.data.length;
-  const target = Math.min(totalCommits, MAX_COMMITS);
-  const totalPages = Math.ceil(target / 100);
+  /** exact only when GitHub's Link last is readable on per_page=1 */
+  const exactTotal = parseLastPage(probe.link);
 
-  // session cache — valid while the branch head is unchanged
   const key = cacheKey(owner, repo, sha);
   try {
     const cached = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
@@ -220,43 +253,99 @@ export async function fetchCommits(
       commits?: CommitSample[];
     } | null;
     if (cached?.headSha && cached.headSha === headSha && cached.commits?.length) {
-      onProgress?.(cached.commits.length, target, totalCommits);
-      return { commits: cached.commits, totalCommits, capped: totalCommits > MAX_COMMITS };
+      const total = exactTotal ?? cached.commits.length;
+      const target = Math.min(total, MAX_COMMITS);
+      onProgress?.(cached.commits.length, target, total);
+      return {
+        commits: cached.commits,
+        totalCommits: total,
+        capped: total > MAX_COMMITS || cached.commits.length >= MAX_COMMITS,
+      };
     }
   } catch {
     /* ignore corrupt cache */
   }
 
   const out: CommitSample[] = [];
+  const pushPage = (data: CommitEntry[]) => {
+    for (const c of data) {
+      const s = toSample(c);
+      if (s) out.push(s);
+    }
+  };
+
+  const report = (totalHint: number) => {
+    const total = Math.max(exactTotal ?? 0, totalHint, out.length);
+    const target = Math.min(Math.max(total, out.length), MAX_COMMITS);
+    onProgress?.(out.length, target, exactTotal ?? total);
+  };
+
   const first = await fetchCommitPage(owner, repo, 1, 100, token, sha, signal);
-  for (const c of first.data) {
-    const s = toSample(c);
-    if (s) out.push(s);
-  }
-  onProgress?.(out.length, target, totalCommits);
+  pushPage(first.data);
 
-  for (let start = 2; start <= totalPages; start += CONCURRENCY) {
-    const pages = Array.from(
-      { length: Math.min(CONCURRENCY, totalPages - start + 1) },
-      (_, i) => start + i,
-    );
-    const results = await Promise.all(
-      pages.map((p) => fetchCommitPage(owner, repo, p, 100, token, sha, signal)),
-    );
-    for (const r of results)
-      for (const c of r.data) {
-        const s = toSample(c);
-        if (s) out.push(s);
+  // Prefer exact (per_page=1) count; else infer page count from per_page=100 Link
+  let totalPages =
+    exactTotal != null
+      ? Math.ceil(Math.min(exactTotal, MAX_COMMITS) / 100)
+      : parseLastPage(first.link);
+
+  if (totalPages != null)
+    totalPages = Math.min(totalPages, Math.ceil(MAX_COMMITS / 100));
+
+  report(
+    exactTotal ??
+      (totalPages != null ? totalPages * 100 : out.length),
+  );
+
+  if (totalPages != null && totalPages >= 2) {
+    for (let start = 2; start <= totalPages; start += CONCURRENCY) {
+      const pages = Array.from(
+        { length: Math.min(CONCURRENCY, totalPages - start + 1) },
+        (_, i) => start + i,
+      );
+      const results = await Promise.all(
+        pages.map((p) => fetchCommitPage(owner, repo, p, 100, token, sha, signal)),
+      );
+      for (const r of results) pushPage(r.data);
+      report(exactTotal ?? totalPages * 100);
+    }
+  } else if (totalPages == null && first.data.length >= 100) {
+    // No Link header — keep paging until a short/empty page
+    let page = 2;
+    while (out.length < MAX_COMMITS) {
+      const pages = Array.from(
+        { length: Math.min(CONCURRENCY, Math.ceil((MAX_COMMITS - out.length) / 100)) },
+        (_, i) => page + i,
+      );
+      const results = await Promise.all(
+        pages.map((p) => fetchCommitPage(owner, repo, p, 100, token, sha, signal)),
+      );
+      let short = false;
+      for (const r of results) {
+        if (r.data.length === 0) {
+          short = true;
+          break;
+        }
+        pushPage(r.data);
+        if (r.data.length < 100) short = true;
       }
-    onProgress?.(out.length, target, totalCommits);
+      report(out.length + (short ? 0 : 100));
+      if (short) break;
+      page += pages.length;
+    }
   }
 
+  const totalCommits = exactTotal ?? out.length;
   try {
     if (out.length) sessionStorage.setItem(key, JSON.stringify({ headSha, commits: out }));
   } catch {
     /* quota — cache is best-effort */
   }
-  return { commits: out, totalCommits, capped: totalCommits > MAX_COMMITS };
+  return {
+    commits: out.slice(0, MAX_COMMITS),
+    totalCommits,
+    capped: totalCommits > MAX_COMMITS || out.length > MAX_COMMITS,
+  };
 }
 
 const GRAPHQL_ENRICH_MAX = 4000;
@@ -324,6 +413,64 @@ export async function enrichCommitStats(
     onProgress?.(Math.min(done * GRAPHQL_BATCH, targets.length), targets.length);
   }
   return enriched;
+}
+
+const PATCH_SAMPLE = 40;
+
+/**
+ * Attach unified-diff patches to a sample of recent commits (for comment-density
+ * AI heuristics). Soft-fails per commit; anonymous works on public repos.
+ */
+export async function enrichCommitPatches(
+  owner: string,
+  repo: string,
+  commits: CommitSample[],
+  token?: string,
+  signal?: AbortSignal,
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
+  const targets = commits.filter((c) => c.sha && !c.patch).slice(0, PATCH_SAMPLE);
+  let filled = 0;
+  let done = 0;
+  onProgress?.(0, targets.length);
+  for (let s = 0; s < targets.length; s += CONCURRENCY) {
+    if (signal?.aborted) break;
+    const batch = targets.slice(s, s + CONCURRENCY);
+    await Promise.all(
+      batch.map(async (c) => {
+        try {
+          const res = await fetch(`${API}/repos/${owner}/${repo}/commits/${c.sha}`, {
+            headers: headers(token),
+            signal,
+          });
+          if (!res.ok) return;
+          const j = (await res.json()) as {
+            stats?: { additions?: number; deletions?: number; total?: number };
+            files?: Array<{ patch?: string; filename?: string }>;
+          };
+          // REST commit detail carries LOC stats — use them for sized ramp-up
+          // even when GraphQL enrichment didn't run (no token / public repos).
+          if (c.additions === undefined && j.stats) {
+            c.additions = j.stats.additions ?? 0;
+            c.deletions = j.stats.deletions ?? 0;
+          }
+          if (c.changedFiles === undefined && j.files)
+            c.changedFiles = j.files.length;
+          const patch = (j.files ?? [])
+            .map((f) => f.patch)
+            .filter(Boolean)
+            .join("\n");
+          if (patch) c.patch = patch;
+          if (patch || j.stats) filled++;
+        } catch (e) {
+          if (isAbortError(e)) throw e;
+        }
+      }),
+    );
+    done += batch.length;
+    onProgress?.(done, targets.length);
+  }
+  return filled;
 }
 
 /** Weekly [additions, deletions] per GitHub's stats; returns null when not yet computed. */

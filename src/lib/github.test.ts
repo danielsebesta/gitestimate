@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parseRepo } from "./github";
+import { parseLastPage, parseRepo } from "./github";
+
+describe("parseLastPage", () => {
+  it("reads rel=last page from a GitHub Link header", () => {
+    const link =
+      '<https://api.github.com/repos/o/r/commits?per_page=1&page=2>; rel="next", ' +
+      '<https://api.github.com/repos/o/r/commits?per_page=1&page=97>; rel="last"';
+    expect(parseLastPage(link)).toBe(97);
+  });
+
+  it("returns null when Link is missing or has no last", () => {
+    expect(parseLastPage(null)).toBeNull();
+    expect(parseLastPage('<https://api.github.com/x?page=2>; rel="next"')).toBeNull();
+  });
+});
 
 describe("parseRepo", () => {
   it("parses owner/repo", () => {

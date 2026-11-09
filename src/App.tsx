@@ -3,22 +3,15 @@ import { useTheme } from "@primer/react";
 import {
   Box,
   Flash,
-  FormControl,
   Heading,
   IconButton,
   Link,
   PageLayout,
-  Select,
   Text,
 } from "@primer/react";
+import { Clock, Code2, Monitor, Moon, Sun } from "lucide-react";
 import {
-  ClockIcon,
-  DeviceDesktopIcon,
-  MarkGithubIcon,
-  MoonIcon,
-  SunIcon,
-} from "@primer/octicons-react";
-import {
+  enrichCommitPatches,
   enrichCommitStats,
   fetchBranches,
   fetchCodeFrequency,
@@ -26,19 +19,35 @@ import {
   fetchFilePaths,
   fetchLanguages,
   fetchRepo,
+  fetchViewer,
   GitHubError,
+  type GitHubUser,
   isAbortError,
   parseRepo,
 } from "./lib/github";
-import { oauthClientId, pollForToken, startDeviceFlow } from "./lib/oauth";
+import {
+  beginWebOAuth,
+  clearOAuthCallbackFromUrl,
+  exchangeCodeForToken,
+  oauthClientId,
+  pollForToken,
+  readOAuthCallback,
+  startDeviceFlow,
+} from "./lib/oauth";
 import { detectFiles } from "./lib/agents";
-import RepoForm from "./components/RepoForm";
+import RepoForm, { type LoadPhase } from "./components/RepoForm";
 import AuthControls, { type DeviceAuth } from "./components/AuthControls";
 import ResultsPanel, { type DoneState } from "./components/ResultsPanel";
 
 type Status =
   | { kind: "idle" }
-  | { kind: "loading"; fetched: number; target: number; total: number }
+  | {
+      kind: "loading";
+      phase: LoadPhase;
+      done: number;
+      total: number;
+      repoTotal?: number;
+    }
   | { kind: "done"; data: DoneState }
   | { kind: "error"; message: string };
 
@@ -64,7 +73,7 @@ function parseToken(): string | undefined {
 
 type Mode = "auto" | "light" | "dark";
 const MODE_ORDER: Mode[] = ["auto", "light", "dark"];
-const MODE_ICON = { auto: DeviceDesktopIcon, light: SunIcon, dark: MoonIcon } as const;
+const MODE_ICON = { auto: Monitor, light: Sun, dark: Moon } as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -80,22 +89,61 @@ export default function App() {
 
   const [input, setInput] = useState("");
   const [token, setToken] = useState<string>(() => parseToken() ?? "");
-  const [gap, setGap] = useState("120");
-  const [credit, setCredit] = useState("30");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [deviceAuth, setDeviceAuth] = useState<DeviceAuth | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [exchanging, setExchanging] = useState(false);
+  const [user, setUser] = useState<GitHubUser | null>(null);
+  const [userLoading, setUserLoading] = useState(false);
   const authAbort = useRef<AbortController | null>(null);
   const runAbort = useRef<AbortController | null>(null);
 
-  const signIn = useCallback(async () => {
+  // Resolve GitHub profile whenever the token changes
+  useEffect(() => {
+    const t = token.trim();
+    if (!t) {
+      setUser(null);
+      setUserLoading(false);
+      return;
+    }
+    const abort = new AbortController();
+    setUserLoading(true);
+    void (async () => {
+      try {
+        const u = await fetchViewer(t, abort.signal);
+        if (!abort.signal.aborted) setUser(u);
+      } catch {
+        if (!abort.signal.aborted) setUser(null);
+      } finally {
+        if (!abort.signal.aborted) setUserLoading(false);
+      }
+    })();
+    return () => abort.abort();
+  }, [token]);
+
+  const requireClientId = useCallback((): string | null => {
     const clientId = oauthClientId();
     if (!clientId) {
       setAuthError(
         "No OAuth app configured — set VITE_GITHUB_CLIENT_ID (or ?oauth_client_id=), see README.",
       );
-      return;
+      return null;
     }
+    return clientId;
+  }, []);
+
+  /** Primary: redirect to GitHub authorize. */
+  const signIn = useCallback(() => {
+    const clientId = requireClientId();
+    if (!clientId) return;
+    setAuthError(null);
+    beginWebOAuth(clientId);
+  }, [requireClientId]);
+
+  /** Backup: Device Flow (code at github.com/login/device). */
+  const deviceSignIn = useCallback(async () => {
+    const clientId = requireClientId();
+    if (!clientId) return;
     setAuthError(null);
     authAbort.current?.abort();
     const abort = new AbortController();
@@ -103,7 +151,13 @@ export default function App() {
     try {
       const d = await startDeviceFlow(clientId);
       setDeviceAuth({ userCode: d.user_code, verificationUri: d.verification_uri });
-      const t = await pollForToken(clientId, d.device_code, d.interval, d.expires_in, abort.signal);
+      const t = await pollForToken(
+        clientId,
+        d.device_code,
+        d.interval,
+        d.expires_in,
+        abort.signal,
+      );
       sessionStorage.setItem("gh_token", t);
       setToken(t);
       setDeviceAuth(null);
@@ -112,11 +166,51 @@ export default function App() {
       if ((e as Error).message !== "cancelled")
         setAuthError(e instanceof Error ? e.message : "Sign-in failed.");
     }
+  }, [requireClientId]);
+
+  // Finish web OAuth after GitHub redirects back with ?code=&state=
+  useEffect(() => {
+    const cb = readOAuthCallback();
+    if (!cb) return;
+    const clientId = oauthClientId();
+    if (!clientId) {
+      clearOAuthCallbackFromUrl();
+      setAuthError("OAuth client id missing after redirect.");
+      return;
+    }
+    let cancelled = false;
+    setExchanging(true);
+    setAuthError(null);
+    void (async () => {
+      try {
+        const t = await exchangeCodeForToken(clientId, cb.code, cb.state);
+        if (cancelled) return;
+        sessionStorage.setItem("gh_token", t);
+        setToken(t);
+      } catch (e) {
+        if (!cancelled)
+          setAuthError(e instanceof Error ? e.message : "Sign-in failed.");
+      } finally {
+        clearOAuthCallbackFromUrl();
+        if (!cancelled) setExchanging(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const signOut = useCallback(() => {
     sessionStorage.removeItem("gh_token");
     setToken("");
+    setUser(null);
+  }, []);
+
+  const onTokenChange = useCallback((v: string) => {
+    const t = v.trim();
+    if (t) sessionStorage.setItem("gh_token", t);
+    else sessionStorage.removeItem("gh_token");
+    setToken(t);
   }, []);
 
   const cancelDevice = useCallback(() => {
@@ -141,16 +235,29 @@ export default function App() {
       const abort = new AbortController();
       runAbort.current = abort;
       const { signal } = abort;
-      const progress = (fetched: number, t: number, total: number) => {
-        if (!signal.aborted) setStatus({ kind: "loading", fetched, target: t, total });
+      const setLoad = (phase: LoadPhase, done: number, total: number, repoTotal?: number) => {
+        if (!signal.aborted)
+          setStatus({
+            kind: "loading",
+            phase,
+            done,
+            total: Math.max(total, 0),
+            repoTotal,
+          });
       };
-      setStatus({ kind: "loading", fetched: 0, target: 0, total: 0 });
+      setStatus({ kind: "loading", phase: "commits", done: 0, total: 0 });
       try {
         const t = token.trim() || undefined;
         const repo = await fetchRepo(parsed.owner, parsed.repo, t, signal);
         const sha = branch ?? repo.defaultBranch;
         const [commitsRes, paths, languages, branches] = await Promise.all([
-          fetchCommits(parsed.owner, parsed.repo, t, progress, { sha, signal }),
+          fetchCommits(
+            parsed.owner,
+            parsed.repo,
+            t,
+            (done, target, repoTotal) => setLoad("commits", done, target, repoTotal),
+            { sha, signal },
+          ),
           fetchFilePaths(parsed.owner, parsed.repo, sha, t, signal).catch(() => [] as string[]),
           fetchLanguages(parsed.owner, parsed.repo, t, signal).catch(
             () => ({}) as Record<string, number>,
@@ -164,11 +271,21 @@ export default function App() {
             parsed.repo,
             commitsRes.commits,
             t,
-            (n, total) =>
-              progress(n, total, commitsRes.commits.length),
+            (done, total) => setLoad("stats", done, total, commitsRes.totalCommits),
             signal,
           ).catch(() => 0);
         if (signal.aborted) return;
+        // sample patches for comment-density heuristics (public repos OK without token)
+        await enrichCommitPatches(
+          parsed.owner,
+          parsed.repo,
+          commitsRes.commits,
+          t,
+          signal,
+          (done, total) => setLoad("patches", done, total, commitsRes.totalCommits),
+        ).catch(() => 0);
+        if (signal.aborted) return;
+        setLoad("charts", 0, 1, commitsRes.totalCommits);
         // stats endpoints are computed async — retry once
         let codeFreq = await fetchCodeFrequency(parsed.owner, parsed.repo, t, signal).catch(
           () => null,
@@ -178,6 +295,7 @@ export default function App() {
           if (signal.aborted) return;
           codeFreq = await fetchCodeFrequency(parsed.owner, parsed.repo, t, signal).catch(() => null);
         }
+        setLoad("charts", 1, 1, commitsRes.totalCommits);
         if (signal.aborted) return;
         setStatus({
           kind: "done",
@@ -231,7 +349,7 @@ export default function App() {
       <PageLayout.Header>
         <Box display="flex" alignItems="center" justifyContent="space-between" py={3}>
           <Box display="flex" alignItems="center" sx={{ gap: 2 }}>
-            <ClockIcon size={24} />
+            <Clock size={24} strokeWidth={2} />
             <Heading as="h1" sx={{ fontSize: 3, fontWeight: 600 }}>
               GitEstimate
             </Heading>
@@ -249,7 +367,7 @@ export default function App() {
               href={REPO_URL}
               target="_blank"
               rel="noreferrer"
-              icon={MarkGithubIcon}
+              icon={Code2}
               aria-label="GitEstimate on GitHub"
               variant="invisible"
             />
@@ -260,8 +378,7 @@ export default function App() {
       <PageLayout.Content>
         <Box sx={{ maxWidth: 768, mx: "auto", pt: [3, 4], px: 3 }}>
           <Text as="p" color="fg.muted" sx={{ mb: 3 }}>
-            Paste a repository to estimate the time its authors spent building it,
-            reconstructed from commit timestamps.
+            Estimate how long a repo took from its commit history.
           </Text>
 
           <RepoForm
@@ -279,33 +396,18 @@ export default function App() {
 
           <AuthControls
             token={token}
-            onTokenChange={setToken}
+            onTokenChange={onTokenChange}
             onSignIn={signIn}
+            onDeviceSignIn={deviceSignIn}
             onSignOut={signOut}
             busy={loading}
             deviceAuth={deviceAuth}
             onCancelDevice={cancelDevice}
             authError={authError}
-          >
-            <FormControl sx={{ flex: ["1 1 calc(50% - 8px)", "0 0 auto"], minWidth: 110 }}>
-              <FormControl.Label visuallyHidden>Session gap</FormControl.Label>
-              <Select value={gap} onChange={(e) => setGap(e.target.value)} size="small" block>
-                <Select.Option value="60">Gap 1 h</Select.Option>
-                <Select.Option value="120">Gap 2 h</Select.Option>
-                <Select.Option value="180">Gap 3 h</Select.Option>
-                <Select.Option value="240">Gap 4 h</Select.Option>
-              </Select>
-            </FormControl>
-            <FormControl sx={{ flex: ["1 1 calc(50% - 8px)", "0 0 auto"], minWidth: 150 }}>
-              <FormControl.Label visuallyHidden>Session credit</FormControl.Label>
-              <Select value={credit} onChange={(e) => setCredit(e.target.value)} size="small" block>
-                <Select.Option value="15">+15 min/session</Select.Option>
-                <Select.Option value="30">+30 min/session</Select.Option>
-                <Select.Option value="45">+45 min/session</Select.Option>
-                <Select.Option value="60">+60 min/session</Select.Option>
-              </Select>
-            </FormControl>
-          </AuthControls>
+            exchanging={exchanging}
+            user={user}
+            userLoading={userLoading}
+          />
 
           {status.kind === "error" && (
             <Flash variant="danger" sx={{ mt: 3 }}>
@@ -314,7 +416,7 @@ export default function App() {
           )}
 
           {status.kind === "done" && (
-            <ResultsPanel data={status.data} gap={Number(gap)} credit={Number(credit)} />
+            <ResultsPanel data={status.data} viewerLogin={user?.login} />
           )}
         </Box>
       </PageLayout.Content>
@@ -327,7 +429,7 @@ export default function App() {
           sx={{ flexWrap: "wrap", gap: 1, px: [3, 0] }}
         >
           <Text size="small" color="fg.muted">
-            MIT-licensed · estimates run in your browser · not affiliated with GitHub, Inc.
+            MIT · runs in your browser · not affiliated with GitHub
           </Text>
           <Text size="small" color="fg.muted">
             GitEstimate · built by{" "}

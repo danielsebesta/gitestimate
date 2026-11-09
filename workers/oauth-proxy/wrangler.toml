@@ -5,8 +5,8 @@ compatibility_date = "2025-11-01"
 # no account_id — wrangler deploys to the account you're logged into (`wrangler login` / `wrangler whoami`)
 
 # extra origins allowed to call the proxy (localhost:5173 / 127.0.0.1:5173 are always allowed)
-# [vars]
-# ALLOWED_ORIGINS = "https://<you>.github.io,https://gitestimate.example.com"
+[vars]
+ALLOWED_ORIGINS = "https://gitestimate.sebesta.dev"
 
 # deploy: npx wrangler deploy
 # then set VITE_OAUTH_PROXY=https://gitestimate-oauth-proxy.<you>.workers.dev

@@ -1,0 +1,16 @@
+name = "gitestimate"
+main = "workers/site/index.ts"
+compatibility_date = "2025-11-01"
+
+# no account_id — wrangler deploys to the account you're logged into
+
+[[routes]]
+pattern = "gitestimate.sebesta.dev"
+custom_domain = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+# OAuth Device Flow needs the Worker before static assets
+run_worker_first = ["/api/*"]
