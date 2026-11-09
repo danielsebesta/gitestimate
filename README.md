@@ -13,7 +13,7 @@ no client secret in the bundle) or a
 Shareable links: `/owner/name` (or `?repo=owner/name`) prefills and runs
 the estimate on load; the address bar updates to it after every run.
 Static hosts need an SPA fallback (all paths → `index.html`) for the
-path form — query links work everywhere.
+path form — query links work everywhere (see **Deploy** below).
 
 ## Private repos — OAuth sign-in
 
@@ -22,15 +22,19 @@ them directly. This repo ships the smallest possible bridge:
 
 - **Dev** — `vite.config.ts` already proxies `/api/oauth/* → github.com`.
   Sign-in works on `localhost:5173` out of the box.
-- **Production** — deploy the ~40-line Cloudflare Worker in
-  `workers/oauth-proxy/` (`npx wrangler deploy`). It whitelists exactly
-  the two endpoints the flow needs.
+- **Production** — deploy the ~70-line Cloudflare Worker in
+  `workers/oauth-proxy/` (`cd workers/oauth-proxy && npx wrangler deploy`).
+  It whitelists exactly the two endpoints the flow needs and only reflects
+  CORS origins on an allowlist: `localhost:5173`/`127.0.0.1:5173` plus
+  whatever you set in `ALLOWED_ORIGINS` (comma-separated) in
+  `wrangler.toml`'s `[vars]`. No `account_id` is committed — wrangler
+  deploys to the account you're logged into.
 
 Setup (once):
 
 1. [Create an OAuth App](https://github.com/settings/developers) →
    **Enable Device Flow**. Any callback URL works (Device Flow doesn't use it).
-2. Copy the Client ID into `.env`:
+2. Copy the Client ID into `.env` (see `.env.example`):
    ```
    VITE_GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxx
    ```
@@ -88,11 +92,38 @@ Octicons). Deployable as a static site (e.g. GitHub Pages).
 ## Develop
 
 ```sh
+cp .env.example .env   # optional — needed for OAuth sign-in
 npm install
 npm run dev
 ```
 
 `npm run build` typechecks and emits a static bundle to `dist/`.
+`npm test` runs the unit tests.
+
+CLI helpers (run against the live GitHub API; `GITHUB_TOKEN` env optional):
+
+```sh
+npm run measure -- owner/repo        # print the estimate for a repo
+npm run detect-debug -- owner/repo   # dump AI-marker detection stats
+```
+
+## Deploy
+
+The app is a static SPA — `npm run build` → `dist/`. Because share links
+use paths (`/owner/name`), the host needs a fallback that serves
+`index.html` for unknown paths:
+
+- **GitHub Pages** — Pages serves `404.html` for missing paths; copy the
+  built `index.html` to `dist/404.html` (e.g.
+  `npm run build && cp dist/index.html dist/404.html`) so deep links load
+  the app.
+- **Cloudflare Pages** — SPAs work out of the box: Pages falls back to
+  `index.html` for paths that don't match a file (or add a `dist/_redirects`
+  file with `/*  /index.html  200` to be explicit).
+- **Netlify / others** — standard `/* → /index.html` rewrite.
+
+Set `VITE_GITHUB_CLIENT_ID` / `VITE_OAUTH_PROXY` at build time for OAuth
+sign-in in production (see `.env.example`).
 
 ## License
 

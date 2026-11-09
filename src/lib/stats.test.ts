@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSample } from "./estimate";
-import { computeStats, levelFor } from "./stats";
+import { computeStats, dayKey, levelFor } from "./stats";
 
 const neverAgent = () => false;
+
+/** Build an ISO timestamp at local noon on Y-M-D so day/weekday assertions are TZ-stable. */
+function localNoon(y: number, m: number, d: number): string {
+  return new Date(y, m - 1, d, 12, 0, 0, 0).toISOString();
+}
 
 function c(authorDate: string, author = "alice"): CommitSample {
   return { authorDate, author };
@@ -22,8 +27,8 @@ describe("levelFor", () => {
   });
 
   it("uses quartile buckets when max > 4", () => {
-    expect(levelFor(1, 100)).toBe(1); // 1%
-    expect(levelFor(25, 100)).toBe(1); // 25%
+    expect(levelFor(1, 100)).toBe(1);
+    expect(levelFor(25, 100)).toBe(1);
     expect(levelFor(26, 100)).toBe(2);
     expect(levelFor(50, 100)).toBe(2);
     expect(levelFor(51, 100)).toBe(3);
@@ -33,42 +38,48 @@ describe("levelFor", () => {
   });
 });
 
+describe("dayKey", () => {
+  it("formats the viewer's local calendar day", () => {
+    const d = new Date(2024, 5, 1, 15, 30, 0); // Jun 1 local
+    expect(dayKey(d)).toBe("2024-06-01");
+  });
+});
+
 describe("computeStats day counting", () => {
-  it("buckets commits by UTC calendar day", () => {
-    const stats = computeStats(
-      [
-        c("2024-06-01T01:00:00Z"),
-        c("2024-06-01T23:00:00Z"),
-        c("2024-06-02T00:30:00Z"),
-      ],
-      neverAgent,
-    );
+  it("buckets commits by local calendar day", () => {
+    const d1 = localNoon(2024, 6, 1);
+    const d1b = new Date(2024, 5, 1, 18, 0, 0).toISOString();
+    const d2 = localNoon(2024, 6, 2);
+    const stats = computeStats([c(d1), c(d1b), c(d2)], neverAgent);
     expect(stats.activeDays).toBe(2);
     expect(stats.days.get("2024-06-01")?.commits).toBe(2);
     expect(stats.days.get("2024-06-02")?.commits).toBe(1);
     expect(stats.busiestDay).toEqual({ date: "2024-06-01", commits: 2 });
   });
 
-  it("counts ISO weekdays in UTC (0=Mon..6=Sun)", () => {
-    // 2024-06-03 = Monday UTC, 2024-06-08 = Saturday UTC, 2024-06-09 = Sunday UTC
-    const stats = computeStats(
-      [c("2024-06-03T12:00:00Z"), c("2024-06-08T12:00:00Z"), c("2024-06-09T12:00:00Z")],
-      neverAgent,
-    );
+  it("counts ISO weekdays in local time (0=Mon..6=Sun)", () => {
+    // Pick known local weekdays via Date(y,m,d)
+    const mon = localNoon(2024, 6, 3); // 2024-06-03 is Monday
+    const sat = localNoon(2024, 6, 8);
+    const sun = localNoon(2024, 6, 9);
+    expect(new Date(mon).getDay()).toBe(1);
+    expect(new Date(sat).getDay()).toBe(6);
+    expect(new Date(sun).getDay()).toBe(0);
+
+    const stats = computeStats([c(mon), c(sat), c(sun)], neverAgent);
     expect(stats.weekday[0]).toBe(1); // Mon
     expect(stats.weekday[5]).toBe(1); // Sat
     expect(stats.weekday[6]).toBe(1); // Sun
     expect(stats.weekendShare).toBeCloseTo(2 / 3);
   });
 
-  it("computes longest streak of consecutive active UTC days", () => {
+  it("computes longest streak of consecutive active local days", () => {
     const stats = computeStats(
       [
-        c("2024-01-01T12:00:00Z"),
-        c("2024-01-02T12:00:00Z"),
-        c("2024-01-03T12:00:00Z"),
-        // gap
-        c("2024-01-05T12:00:00Z"),
+        c(localNoon(2024, 1, 1)),
+        c(localNoon(2024, 1, 2)),
+        c(localNoon(2024, 1, 3)),
+        c(localNoon(2024, 1, 5)),
       ],
       neverAgent,
     );
@@ -78,8 +89,10 @@ describe("computeStats day counting", () => {
   });
 
   it("tracks agent commits per day via isAgent", () => {
+    const day = localNoon(2024, 1, 1);
+    const later = new Date(2024, 0, 1, 13, 0, 0).toISOString();
     const stats = computeStats(
-      [c("2024-01-01T12:00:00Z", "bot"), c("2024-01-01T13:00:00Z", "alice")],
+      [c(day, "bot"), c(later, "alice")],
       (x) => x.author === "bot",
     );
     expect(stats.days.get("2024-01-01")).toEqual({

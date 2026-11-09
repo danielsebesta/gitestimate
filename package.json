@@ -15,9 +15,9 @@
     "measure": "vite-node scripts/measure.mts",
     "detect-debug": "vite-node scripts/detect-debug.mts"
   },
-
   "dependencies": {
     "@primer/octicons-react": "^19.9.0",
+    "@primer/primitives": "^11.10.0",
     "@primer/react": "^37.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

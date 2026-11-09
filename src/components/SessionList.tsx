@@ -1,4 +1,4 @@
-import { Box, Label, Text } from "@primer/react";
+import { Box, Label, Link, Text } from "@primer/react";
 import { CopilotIcon, GitCommitIcon } from "@primer/octicons-react";
 import type { Session } from "../lib/estimate";
 import { formatHours } from "../lib/estimate";
@@ -11,7 +11,14 @@ function fmtTime(d: Date) {
 }
 
 /** last N sessions, GitHub commit-feed style grouped by day */
-export default function SessionList({ sessions }: { sessions: Session[] }) {
+export default function SessionList({
+  sessions,
+  repoFullName,
+}: {
+  sessions: Session[];
+  /** owner/repo — links each session's first sha to github.com when provided */
+  repoFullName?: string;
+}) {
   const recent = [...sessions].sort((a, b) => b.start.getTime() - a.start.getTime()).slice(0, 12);
   const byDay = new Map<string, Session[]>();
   for (const s of recent) {
@@ -49,6 +56,23 @@ export default function SessionList({ sessions }: { sessions: Session[] }) {
                   <Text size="small" sx={{ whiteSpace: "nowrap" }}>
                     {fmtTime(s.start)} → {fmtTime(s.end)}
                   </Text>
+                  {s.firstSha &&
+                    (repoFullName ? (
+                      <Link
+                        href={`https://github.com/${repoFullName}/commit/${s.firstSha}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        muted
+                        title="first commit in this session"
+                        sx={{ fontFamily: "mono", fontSize: 11 }}
+                      >
+                        {s.firstSha.slice(0, 7)}
+                      </Link>
+                    ) : (
+                      <Text size="small" color="fg.muted" sx={{ fontFamily: "mono", fontSize: 11 }}>
+                        {s.firstSha.slice(0, 7)}
+                      </Text>
+                    ))}
                   {s.author && (
                     <Text
                       size="small"

@@ -1,16 +1,23 @@
 import type { CommitSample } from "./estimate";
 
+/** YYYY-MM-DD on the viewer's local calendar — the day the commit "felt" like */
+export function dayKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 export interface DayCell {
-  /** YYYY-MM-DD in UTC */
+  /** YYYY-MM-DD, local calendar */
   date: string;
   commits: number;
   agentCommits: number;
 }
 
 export interface RepoStats {
-  /** per-day commit counts, UTC, only days with activity */
+  /** per-day commit counts keyed by local calendar day, only days with activity */
   days: Map<string, DayCell>;
-  /** commits per ISO weekday 0=Mon..6=Sun */
+  /** commits per ISO weekday 0=Mon..6=Sun, local */
   weekday: number[];
   /** commits per local hour 0..23 */
   hour: number[];
@@ -56,14 +63,14 @@ export function computeStats(commits: CommitSample[], isAgent: (c: CommitSample)
   let busiest: { date: string; commits: number } | null = null;
 
   for (const { c, d } of dates) {
-    const key = d.toISOString().slice(0, 10);
+    const key = dayKey(d);
     const cell = days.get(key) ?? { date: key, commits: 0, agentCommits: 0 };
     cell.commits++;
     if (isAgent(c)) cell.agentCommits++;
     days.set(key, cell);
     if (!busiest || cell.commits > busiest.commits) busiest = { date: key, commits: cell.commits };
 
-    const wd = (d.getUTCDay() + 6) % 7;
+    const wd = (d.getDay() + 6) % 7;
     weekday[wd]++;
     if (wd >= 5) weekend++;
     const h = d.getHours();
@@ -73,12 +80,14 @@ export function computeStats(commits: CommitSample[], isAgent: (c: CommitSample)
     prev = d.getTime();
   }
 
-  // longest streak of consecutive active days
+  // longest streak of consecutive active days — keys are local dates, so
+  // compare their UTC equivalents: consecutive calendar days are always DAY_MS apart
   let streak = 0;
   let longest = 0;
   let lastDay = -Infinity;
   for (const key of [...days.keys()].sort()) {
-    const t = new Date(key + "T00:00:00Z").getTime();
+    const [y, m, dd] = key.split("-").map(Number);
+    const t = Date.UTC(y, m - 1, dd);
     streak = t - lastDay === DAY_MS ? streak + 1 : 1;
     longest = Math.max(longest, streak);
     lastDay = t;

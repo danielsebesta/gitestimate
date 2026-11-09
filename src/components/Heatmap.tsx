@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Box, Text } from "@primer/react";
 import type { RepoStats } from "../lib/stats";
-import { levelFor } from "../lib/stats";
+import { dayKey, levelFor } from "../lib/stats";
 
 const CELL = 10;
 const GAP = 3;
@@ -11,16 +11,19 @@ const WEEKDAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
 /** GitHub-style contribution graph — last ~52 weeks of commit activity. */
 export default function Heatmap({ stats }: { stats: RepoStats }) {
   const { weeks, months, max, total } = useMemo(() => {
+    // local calendar throughout — stats.days keys are local dates too
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     // start on the Sunday 52 weeks back (53 columns, like github.com)
     const start = new Date(today);
-    start.setUTCDate(start.getUTCDate() - 364 - start.getUTCDay());
+    start.setDate(start.getDate() - 364 - start.getDay());
 
     const days: { date: string; commits: number; agent: number; future: boolean }[] = [];
     for (let i = 0; i < 371; i++) {
-      const d = new Date(start.getTime() + i * 86400000);
-      const key = d.toISOString().slice(0, 10);
+      // setDate (not +86400000) so DST transitions can't skip or repeat a day
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const key = dayKey(d);
       const cell = stats.days.get(key);
       days.push({
         date: key,
@@ -34,12 +37,15 @@ export default function Heatmap({ stats }: { stats: RepoStats }) {
     const months = weeks
       .map((w, i) => ({ i, label: w[0].date.slice(5, 7) }))
       .filter((m, idx, arr) => idx === 0 || m.label !== arr[idx - 1].label)
-      .map((m) => ({
-        ...m,
-        label: new Date(weeks[m.i][0].date + "T00:00:00Z").toLocaleDateString(undefined, {
-          month: "short",
-        }),
-      }));
+      .map((m) => {
+        const [y, mo, dd] = weeks[m.i][0].date.split("-").map(Number);
+        return {
+          ...m,
+          label: new Date(y, mo - 1, dd).toLocaleDateString(undefined, {
+            month: "short",
+          }),
+        };
+      });
     const max = Math.max(1, ...days.map((d) => d.commits));
     const total = days.reduce((s, d) => s + d.commits, 0);
     return { weeks, months, max, total };

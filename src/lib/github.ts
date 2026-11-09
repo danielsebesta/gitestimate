@@ -30,6 +30,11 @@ export class GitHubError extends Error {
   }
 }
 
+/** true for fetch rejections caused by AbortSignal — callers should ignore these */
+export function isAbortError(e: unknown): boolean {
+  return e instanceof Error && e.name === "AbortError";
+}
+
 /** Accepts "owner/repo", "github.com/owner/repo", or a full URL. */
 export function parseRepo(input: string): { owner: string; repo: string } | null {
   const cleaned = input
@@ -69,8 +74,16 @@ async function check(res: Response): Promise<void> {
   throw new GitHubError(`GitHub API error (${res.status}).`, res.status);
 }
 
-export async function fetchRepo(owner: string, repo: string, token?: string): Promise<RepoInfo> {
-  const res = await fetch(`${API}/repos/${owner}/${repo}`, { headers: headers(token) });
+export async function fetchRepo(
+  owner: string,
+  repo: string,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<RepoInfo> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}`, {
+    headers: headers(token),
+    signal,
+  });
   await check(res);
   const j = (await res.json()) as {
     full_name: string;
@@ -157,16 +170,20 @@ async function fetchCommitPage(
   page: number,
   perPage: number,
   token?: string,
+  sha?: string,
+  signal?: AbortSignal,
 ): Promise<Page1Response> {
   const res = await fetch(
-    `${API}/repos/${owner}/${repo}/commits?per_page=${perPage}&page=${page}`,
-    { headers: headers(token) },
+    `${API}/repos/${owner}/${repo}/commits?per_page=${perPage}&page=${page}${
+      sha ? `&sha=${encodeURIComponent(sha)}` : ""
+    }`,
+    { headers: headers(token), signal },
   );
   await check(res);
   return { link: res.headers.get("link"), data: (await res.json()) as CommitEntry[] };
 }
 
-const cacheKey = (o: string, r: string) => `ge_cache_v2:${o}/${r}`;
+const cacheKey = (o: string, r: string, sha?: string) => `ge_cache_v2:${o}/${r}@${sha ?? ""}`;
 
 /**
  * Probes the real commit count with a single per_page=1 request (the Link
@@ -174,20 +191,29 @@ const cacheKey = (o: string, r: string) => `ge_cache_v2:${o}/${r}`;
  * against the head sha, then downloads remaining pages in parallel batches.
  * Uses the *author* date — it records when the work was written.
  */
+export interface FetchCommitsOptions {
+  /** branch, tag or commit sha to list commits for (default: the repo's default branch) */
+  sha?: string;
+  signal?: AbortSignal;
+}
+
 export async function fetchCommits(
   owner: string,
   repo: string,
   token: string | undefined,
   onProgress?: (fetched: number, target: number, total: number) => void,
+  opts?: FetchCommitsOptions,
 ): Promise<CommitsResult> {
-  const probe = await fetchCommitPage(owner, repo, 1, 1, token);
+  const sha = opts?.sha;
+  const signal = opts?.signal;
+  const probe = await fetchCommitPage(owner, repo, 1, 1, token, sha, signal);
   const headSha = probe.data[0]?.sha;
   const totalCommits = parseLastPage(probe.link) ?? probe.data.length;
   const target = Math.min(totalCommits, MAX_COMMITS);
   const totalPages = Math.ceil(target / 100);
 
   // session cache — valid while the branch head is unchanged
-  const key = cacheKey(owner, repo);
+  const key = cacheKey(owner, repo, sha);
   try {
     const cached = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
       headSha?: string;
@@ -202,7 +228,7 @@ export async function fetchCommits(
   }
 
   const out: CommitSample[] = [];
-  const first = await fetchCommitPage(owner, repo, 1, 100, token);
+  const first = await fetchCommitPage(owner, repo, 1, 100, token, sha, signal);
   for (const c of first.data) {
     const s = toSample(c);
     if (s) out.push(s);
@@ -215,7 +241,7 @@ export async function fetchCommits(
       (_, i) => start + i,
     );
     const results = await Promise.all(
-      pages.map((p) => fetchCommitPage(owner, repo, p, 100, token)),
+      pages.map((p) => fetchCommitPage(owner, repo, p, 100, token, sha, signal)),
     );
     for (const r of results)
       for (const c of r.data) {
@@ -248,6 +274,7 @@ export async function enrichCommitStats(
   commits: CommitSample[],
   token: string,
   onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<number> {
   const targets = commits.filter((c) => c.sha).slice(0, GRAPHQL_ENRICH_MAX);
   const batches: CommitSample[][] = [];
@@ -269,6 +296,7 @@ export async function enrichCommitStats(
           const res = await fetch(`${API}/graphql`, {
             method: "POST",
             headers: { ...headers(token), "Content-Type": "application/json" },
+            signal,
             body: JSON.stringify({
               query: `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${fields}}}`,
               variables: { owner, name: repo },
@@ -286,8 +314,9 @@ export async function enrichCommitStats(
             batch[i].changedFiles = o.changedFilesIfAvailable;
             enriched++;
           }
-        } catch {
-          /* skip failed batch — partial stats still useful */
+        } catch (e) {
+          /* skip failed batch — partial stats still useful; abort is real */
+          if (isAbortError(e)) throw e;
         }
       }),
     );
@@ -302,9 +331,11 @@ export async function fetchCodeFrequency(
   owner: string,
   repo: string,
   token?: string,
+  signal?: AbortSignal,
 ): Promise<Array<[number, number, number]> | null> {
   const res = await fetch(`${API}/repos/${owner}/${repo}/stats/code_frequency`, {
     headers: headers(token),
+    signal,
   });
   await check(res);
   if (res.status === 202) return null;
@@ -317,9 +348,11 @@ export async function fetchLanguages(
   owner: string,
   repo: string,
   token?: string,
+  signal?: AbortSignal,
 ): Promise<Record<string, number>> {
   const res = await fetch(`${API}/repos/${owner}/${repo}/languages`, {
     headers: headers(token),
+    signal,
   });
   await check(res);
   return (await res.json()) as Record<string, number>;
@@ -331,12 +364,34 @@ export async function fetchFilePaths(
   repo: string,
   branch: string,
   token?: string,
+  signal?: AbortSignal,
 ): Promise<string[]> {
   const res = await fetch(
     `${API}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
-    { headers: headers(token) },
+    { headers: headers(token), signal },
   );
   await check(res);
   const j = (await res.json()) as { tree?: Array<{ path?: string }> };
   return (j.tree ?? []).flatMap((e) => (e.path ? [e.path] : []));
+}
+
+/** branch names, up to 300 — feeds the branch picker */
+export async function fetchBranches(
+  owner: string,
+  repo: string,
+  token?: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const names: string[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const res = await fetch(
+      `${API}/repos/${owner}/${repo}/branches?per_page=100&page=${page}`,
+      { headers: headers(token), signal },
+    );
+    await check(res);
+    const arr = (await res.json()) as Array<{ name?: string }>;
+    for (const b of arr) if (b.name) names.push(b.name);
+    if (arr.length < 100) break;
+  }
+  return names;
 }

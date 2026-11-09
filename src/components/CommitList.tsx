@@ -1,4 +1,4 @@
-import { Box, Label, Text } from "@primer/react";
+import { Box, Label, Link, Text } from "@primer/react";
 import { CopilotIcon, GitCommitIcon } from "@primer/octicons-react";
 import type { CommitSample } from "../lib/estimate";
 import { detectCommit } from "../lib/agents";
@@ -12,7 +12,14 @@ function rel(d: Date): string {
 }
 
 /** latest commits, GitHub feed style — subject, sha, author, AI badge */
-export default function CommitList({ commits }: { commits: CommitSample[] }) {
+export default function CommitList({
+  commits,
+  repoFullName,
+}: {
+  commits: CommitSample[];
+  /** owner/repo — links each sha to github.com when provided */
+  repoFullName?: string;
+}) {
   const recent = [...commits]
     .filter((c) => !Number.isNaN(new Date(c.authorDate).getTime()))
     .sort((a, b) => new Date(b.authorDate).getTime() - new Date(a.authorDate).getTime())
@@ -62,11 +69,22 @@ export default function CommitList({ commits }: { commits: CommitSample[] }) {
                   <Text sx={{ color: "danger.fg" }}>−{c.deletions}</Text>
                 </Text>
               )}
-              {c.sha && (
-                <Text size="small" color="fg.muted" sx={{ fontFamily: "mono", fontSize: 11 }}>
-                  {c.sha.slice(0, 7)}
-                </Text>
-              )}
+              {c.sha &&
+                (repoFullName ? (
+                  <Link
+                    href={`https://github.com/${repoFullName}/commit/${c.sha}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    muted
+                    sx={{ fontFamily: "mono", fontSize: 11 }}
+                  >
+                    {c.sha.slice(0, 7)}
+                  </Link>
+                ) : (
+                  <Text size="small" color="fg.muted" sx={{ fontFamily: "mono", fontSize: 11 }}>
+                    {c.sha.slice(0, 7)}
+                  </Text>
+                ))}
               <Text
                 size="small"
                 color="fg.muted"

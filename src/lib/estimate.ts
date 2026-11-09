@@ -27,6 +27,8 @@ export interface Session {
   agentOnly: boolean;
   /** the author whose commits make up this session */
   author?: string;
+  /** sha of the session's first commit — links the session back to GitHub */
+  firstSha?: string;
   /** total additions+deletions across the session's commits (when stats were fetched) */
   churn?: number;
 }
@@ -75,6 +77,7 @@ interface Point {
   date: Date;
   agent: boolean;
   churn: number;
+  sha?: string;
 }
 
 /** extra ramp-up minutes per 30 lines of churn, capped — bigger diffs took longer */
@@ -93,6 +96,7 @@ function sessionsFor(
   let count = 0;
   let allAgent = true;
   let churn = 0;
+  let firstSha: string | undefined;
 
   const flush = () => {
     if (!start || !prev) return;
@@ -106,9 +110,11 @@ function sessionsFor(
       commitCount: count,
       minutes: span + credit,
       agentOnly: allAgent,
+      firstSha,
       churn: churn || undefined,
     });
     churn = 0;
+    firstSha = undefined;
   };
 
   for (const p of points) {
@@ -118,7 +124,10 @@ function sessionsFor(
       count = 0;
       allAgent = true;
     }
-    if (!start) start = p.date;
+    if (!start) {
+      start = p.date;
+      firstSha = p.sha;
+    }
     if (!p.agent) allAgent = false;
     prev = p.date;
     count++;
@@ -126,6 +135,17 @@ function sessionsFor(
   }
   flush();
   return sessions;
+}
+
+/**
+ * Identity behind a commit's work: the bot committer for automation,
+ * else the author. Shared by estimate() and the author filter in the UI.
+ */
+export function authorIdentity(c: CommitSample): string {
+  const signal = detectCommit(c);
+  return signal?.strength === "authored" && signal.via === "committer"
+    ? c.committer || c.author || "unknown"
+    : c.author || "unknown";
 }
 
 export function estimate(
@@ -148,10 +168,7 @@ export function estimate(
         assisted: signal?.strength === "assisted",
         botAuthor: authored && signal?.via === "author",
         /** identity behind the work: the bot committer for automation, else the author */
-        identity:
-          authored && signal?.via === "committer"
-            ? c.committer || c.author || "unknown"
-            : c.author || "unknown",
+        identity: authorIdentity(c),
       };
     })
     .filter((c) => !Number.isNaN(c.date.getTime()))
@@ -170,6 +187,7 @@ export function estimate(
     entry.dates.push({
       date: c.date,
       agent: c.agent,
+      sha: c.sha,
       // assisted diffs are mostly machine-written — review time counts at half weight
       churn: ((c.additions ?? 0) + (c.deletions ?? 0)) * (c.assisted ? 0.5 : 1),
     });
