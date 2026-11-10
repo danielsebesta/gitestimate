@@ -1,5 +1,5 @@
 import { Box, Label, Link, Text } from "@primer/react";
-import { Bot, GitCommit } from "lucide-react";
+import { GitCommitIcon, HubotIcon } from "@primer/octicons-react";
 import { isBotLogin, stripBotSuffix } from "../lib/agents";
 import type { Session } from "../lib/estimate";
 import { formatHours } from "../lib/estimate";
@@ -53,7 +53,7 @@ export default function SessionList({
                 }}
               >
                 <Box display="flex" alignItems="center" sx={{ gap: 2, minWidth: 0 }}>
-                  <GitCommit size={14} strokeWidth={2} />
+                  <GitCommitIcon size={14} />
                   <Text size="small" sx={{ whiteSpace: "nowrap" }}>
                     {fmtTime(s.start)} → {fmtTime(s.end)}
                   </Text>
@@ -92,18 +92,18 @@ export default function SessionList({
                     <Label
                       size="small"
                       variant="secondary"
-                      sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}
+                      sx={{ display: "inline-flex", alignItems: "center", gap: 1, lineHeight: 1 }}
                     >
-                      <Bot size={10} strokeWidth={2} /> Bot
+                      <HubotIcon size={10} /> Bot
                     </Label>
                   )}
                   {s.agentOnly && (
                     <Label
                       size="small"
-                      variant="attention"
+                      variant="secondary"
                       title="Timed from model speed, not human hours"
                     >
-                      <Bot size={10} strokeWidth={2} /> AI
+                      <HubotIcon size={10} /> AI
                     </Label>
                   )}
                 </Box>

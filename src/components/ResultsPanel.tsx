@@ -12,7 +12,16 @@ import {
   Select,
   Text,
 } from "@primer/react";
-import { Bot, Check, Download, GitCommit, GitFork, Link2, Star, User } from "lucide-react";
+import {
+  CheckIcon,
+  DownloadIcon,
+  GitCommitIcon,
+  HubotIcon,
+  LinkIcon,
+  PersonIcon,
+  RepoForkedIcon,
+  StarIcon,
+} from "@primer/octicons-react";
 import {
   authorIdentity,
   estimate,
@@ -51,6 +60,15 @@ export interface DoneState {
 
 const WEEKDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i));
+
+/** GitHub-issue-label look: icon and text on one baseline, no stray offsets */
+const badgeSx = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 1,
+  lineHeight: 1,
+  flexShrink: 0,
+} as const;
 
 function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
@@ -200,53 +218,53 @@ export default function ResultsPanel({
             </Select>
           </FormControl>
         )}
-        <Label variant="accent">
-          <GitCommit size={12} strokeWidth={2} /> {result.commitCount.toLocaleString()} commits
+        <Label variant="secondary" sx={badgeSx}>
+          <GitCommitIcon size={12} /> {result.commitCount.toLocaleString()} commits
         </Label>
-        <Label variant="accent">
-          <User size={12} strokeWidth={2} /> {result.authors.length}{" "}
+        <Label variant="secondary" sx={badgeSx}>
+          <PersonIcon size={12} /> {result.authors.length}{" "}
           {result.authors.length === 1 ? "author" : "authors"}
         </Label>
-        <Label variant="accent">
-          <Star size={12} strokeWidth={2} /> {data.repo.stars.toLocaleString()}
+        <Label variant="secondary" sx={badgeSx}>
+          <StarIcon size={12} /> {data.repo.stars.toLocaleString()}
         </Label>
-        <Label variant="accent">
-          <GitFork size={12} strokeWidth={2} /> {data.repo.forks.toLocaleString()}
+        <Label variant="secondary" sx={badgeSx}>
+          <RepoForkedIcon size={12} /> {data.repo.forks.toLocaleString()}
         </Label>
-        {data.repo.license && <Label variant="accent">{data.repo.license}</Label>}
+        {data.repo.license && <Label variant="secondary">{data.repo.license}</Label>}
         {result.agentCommitCount > 0 && (
-          <Label variant="attention">
-            <Bot size={12} strokeWidth={2} /> {result.agentCommitCount.toLocaleString()} AI author
+          <Label variant="secondary" sx={badgeSx}>
+            <HubotIcon size={12} /> {result.agentCommitCount.toLocaleString()} AI author
           </Label>
         )}
         {result.assistedCommitCount > 0 && (
-          <Label variant="sponsors">
+          <Label variant="secondary">
             {result.assistedCommitCount.toLocaleString()} AI helped
           </Label>
         )}
         {suspectedCount > 0 && (
-          <Label variant="severe" title="Weak style signals — not proof">
+          <Label variant="attention" title="Weak style signals — not proof">
             {suspectedCount.toLocaleString()} maybe AI
           </Label>
         )}
         {agentUsage.slice(0, 6).map((u) => (
-          <Label key={u.toolId} variant="attention" sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+          <Label key={u.toolId} variant="secondary" sx={badgeSx}>
             {u.avatarUrl ? (
               <Box
                 as="img"
                 src={u.avatarUrl}
                 alt=""
-                sx={{ width: 12, height: 12, borderRadius: "50%" }}
+                sx={{ width: 12, height: 12, borderRadius: "50%", flexShrink: 0 }}
               />
             ) : (
-              <Bot size={12} strokeWidth={2} />
+              <HubotIcon size={12} />
             )}
             {u.name}
             {u.models[0] ? ` · ${u.models[0]}` : ""}
           </Label>
         ))}
         {data.aiFiles.map((f) => (
-          <Label key={f} variant="sponsors">
+          <Label key={f} variant="secondary">
             {f}
           </Label>
         ))}
@@ -307,20 +325,20 @@ export default function ResultsPanel({
             )}
             <Button
               size="small"
-              leadingVisual={copied === "link" ? Check : Link2}
+              leadingVisual={copied === "link" ? CheckIcon : LinkIcon}
               onClick={() => copyShare("link")}
             >
               {copied === "link" ? "Copied" : "Copy link"}
             </Button>
             <Button
               size="small"
-              leadingVisual={copied === "badge" ? Check : Link2}
+              leadingVisual={copied === "badge" ? CheckIcon : LinkIcon}
               onClick={() => copyShare("badge")}
             >
               {copied === "badge" ? "Copied" : "Copy badge"}
             </Button>
             <ActionMenu>
-              <ActionMenu.Button size="small" leadingVisual={Download}>
+              <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
                 Export
               </ActionMenu.Button>
               <ActionMenu.Overlay>

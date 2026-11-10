@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Box, Button, Label, Link, Text } from "@primer/react";
-import { Bot, User } from "lucide-react";
+import { HubotIcon, PersonIcon } from "@primer/octicons-react";
 import type { AuthorEstimate, CommitSample } from "../lib/estimate";
 import { authorIdentity, formatHours } from "../lib/estimate";
 import { detectCommit, stripBotSuffix } from "../lib/agents";
@@ -74,7 +74,7 @@ export default function AuthorsList({
                   sx={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0 }}
                 />
               ) : (
-                <User size={14} strokeWidth={2} />
+                <PersonIcon size={14} />
               )}
               {a.avatar ? (
                 <Link
@@ -106,24 +106,24 @@ export default function AuthorsList({
                   variant="secondary"
                   sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}
                 >
-                  <Bot size={10} strokeWidth={2} /> Bot
+                  <HubotIcon size={10} /> Bot
                 </Label>
               )}
-              {a.agent && <Label size="small" variant="attention">AI</Label>}
+              {a.agent && <Label size="small" variant="secondary">AI</Label>}
               {tools.slice(0, 3).map((t) => (
                 <Label
                   key={t.name}
                   size="small"
-                  variant="sponsors"
+                  variant="default"
                   title={`${t.n} commits`}
-                  sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}
+                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, lineHeight: 1 }}
                 >
                   {t.avatarUrl && (
                     <Box
                       as="img"
                       src={t.avatarUrl}
                       alt=""
-                      sx={{ width: 12, height: 12, borderRadius: "50%" }}
+                      sx={{ width: 12, height: 12, borderRadius: "50%", flexShrink: 0 }}
                     />
                   )}
                   {t.name}

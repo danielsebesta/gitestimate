@@ -1,5 +1,5 @@
 import { Box, Button, FormControl, ProgressBar, Select, Spinner, Text, TextInput } from "@primer/react";
-import { Search } from "lucide-react";
+import { SearchIcon } from "@primer/octicons-react";
 
 export type LoadPhase = "repo" | "commits" | "stats" | "patches" | "charts";
 
@@ -60,7 +60,7 @@ export default function RepoForm({
     <Box>
       <Box display="flex" sx={{ gap: 2 }}>
         <TextInput
-          leadingVisual={Search}
+          leadingVisual={SearchIcon}
           placeholder="owner/repo or github.com/owner/repo"
           value={input}
           onChange={(e) => onInputChange(e.target.value)}

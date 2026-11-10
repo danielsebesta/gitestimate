@@ -77,15 +77,14 @@ export default function AgentsPanel({
                     sx={{
                       width: 28,
                       height: 28,
-                      borderRadius: "50%",
-                      bg: "var(--bgColor-attention-muted)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       flexShrink: 0,
+                      color: "fg.muted",
                     }}
                   >
-                    <HubotIcon size={14} />
+                    <HubotIcon size={16} />
                   </Box>
                 )}
                 <Box sx={{ minWidth: 0 }}>
@@ -97,14 +96,14 @@ export default function AgentsPanel({
                       </Text>
                     )}
                     {u.model && (
-                      <Label size="small" variant="accent">
+                      <Label size="small" variant="secondary">
                         {u.model}
                       </Label>
                     )}
                     {u.modelSpeedFactor && u.modelSpeedFactor >= 2 && (
                       <Label
                         size="small"
-                        variant="attention"
+                        variant="secondary"
                         title={`${u.modelSpeedFactor}× estimated token output speed`}
                       >
                         {u.modelSpeedFactor}× fast

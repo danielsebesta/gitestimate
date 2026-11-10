@@ -1,5 +1,5 @@
 import { Box, Label, Link, Text } from "@primer/react";
-import { Bot, GitCommit } from "lucide-react";
+import { GitCommitIcon, HubotIcon } from "@primer/octicons-react";
 import type { CommitSample } from "../lib/estimate";
 import { detectCommit, isBotLogin, stripBotSuffix } from "../lib/agents";
 
@@ -40,11 +40,9 @@ export default function CommitList({
         const botOnly = !signal && isBotLogin(c.author);
         const subject = (c.message ?? "(no message)").split("\n")[0];
         const badge =
-          signal?.strength === "authored"
+          signal?.strength === "suspected"
             ? "attention"
-            : signal?.strength === "suspected"
-              ? "severe"
-              : "default";
+            : "secondary";
         return (
           <Box
             key={c.sha ?? i}
@@ -56,7 +54,7 @@ export default function CommitList({
             sx={{ borderTop: i === 0 ? "none" : "1px solid", borderColor: "border.muted" }}
           >
             <Box display="flex" alignItems="center" sx={{ gap: 2, minWidth: 0 }}>
-              <GitCommit size={14} strokeWidth={2} />
+              <GitCommitIcon size={14} />
               <Text
                 size="small"
                 sx={{
@@ -73,17 +71,17 @@ export default function CommitList({
                   size="small"
                   variant={badge}
                   title={[signal.tool, signal.model, signal.marker].filter(Boolean).join(" · ")}
-                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, flexShrink: 0, lineHeight: 1 }}
                 >
                   {signal.avatarUrl ? (
                     <Box
                       as="img"
                       src={signal.avatarUrl}
                       alt=""
-                      sx={{ width: 12, height: 12, borderRadius: "50%" }}
+                      sx={{ width: 12, height: 12, borderRadius: "50%", flexShrink: 0 }}
                     />
                   ) : (
-                    <Bot size={10} strokeWidth={2} />
+                    <HubotIcon size={10} />
                   )}
                   {signal.tool ?? strengthLabel(signal.strength)}
                   {signal.model ? ` · ${signal.model}` : ""}
@@ -93,9 +91,9 @@ export default function CommitList({
                 <Label
                   size="small"
                   variant="secondary"
-                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+                  sx={{ display: "inline-flex", alignItems: "center", gap: 1, flexShrink: 0, lineHeight: 1 }}
                 >
-                  <Bot size={10} strokeWidth={2} /> Bot
+                  <HubotIcon size={10} /> Bot
                 </Label>
               )}
             </Box>
