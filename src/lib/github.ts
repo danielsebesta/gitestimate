@@ -226,21 +226,14 @@ const cacheKey = (o: string, r: string, sha?: string) => `ge_cache_v2:${o}/${r}@
  * If Link is missing (CORS/proxy), walks pages until a short page instead of
  * trusting probe.data.length === 1 — that used to show "97 / 1" in the UI.
  */
-export interface FetchCommitsOptions {
-  /** branch, tag or commit sha to list commits for (default: the repo's default branch) */
-  sha?: string;
-  signal?: AbortSignal;
-}
-
 export async function fetchCommits(
   owner: string,
   repo: string,
+  sha: string | undefined,
   token: string | undefined,
-  onProgress?: (fetched: number, target: number, total: number) => void,
-  opts?: FetchCommitsOptions,
+  onProgress?: (fetched: number, target: number) => void,
+  signal?: AbortSignal,
 ): Promise<CommitsResult> {
-  const sha = opts?.sha;
-  const signal = opts?.signal;
   const probe = await fetchCommitPage(owner, repo, 1, 1, token, sha, signal);
   const headSha = probe.data[0]?.sha;
   /** exact only when GitHub's Link last is readable on per_page=1 */
@@ -255,7 +248,7 @@ export async function fetchCommits(
     if (cached?.headSha && cached.headSha === headSha && cached.commits?.length) {
       const total = exactTotal ?? cached.commits.length;
       const target = Math.min(total, MAX_COMMITS);
-      onProgress?.(cached.commits.length, target, total);
+      onProgress?.(cached.commits.length, target);
       return {
         commits: cached.commits,
         totalCommits: total,
@@ -277,7 +270,7 @@ export async function fetchCommits(
   const report = (totalHint: number) => {
     const total = Math.max(exactTotal ?? 0, totalHint, out.length);
     const target = Math.min(Math.max(total, out.length), MAX_COMMITS);
-    onProgress?.(out.length, target, exactTotal ?? total);
+    onProgress?.(out.length, target);
   };
 
   const first = await fetchCommitPage(owner, repo, 1, 100, token, sha, signal);

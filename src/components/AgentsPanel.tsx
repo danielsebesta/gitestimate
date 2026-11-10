@@ -1,5 +1,5 @@
 import { Box, Label, Link, Text } from "@primer/react";
-import { Bot } from "lucide-react";
+import { HubotIcon } from "@primer/octicons-react";
 import type { AgentUsage } from "../lib/agents";
 
 /** Visible breakdown of AI tools/models detected in the commit history. */
@@ -85,60 +85,61 @@ export default function AgentsPanel({
                       flexShrink: 0,
                     }}
                   >
-                    <Bot size={14} strokeWidth={2} />
+                    <HubotIcon size={14} />
                   </Box>
                 )}
                 <Box sx={{ minWidth: 0 }}>
-                  <Text sx={{ fontWeight: 600, display: "block" }}>{u.name}</Text>
-                  {u.models.length > 0 && (
-                    <Text size="small" color="fg.muted" sx={{ display: "block" }}>
-                      {u.models.map((m, mi) => (
-                        <Text key={m} as="span">
-                          {mi > 0 ? ", " : ""}
-                          {m}
-                        </Text>
-                      ))}
-                    </Text>
-                  )}
+                  <Box display="flex" alignItems="center" sx={{ gap: 1, flexWrap: "wrap" }}>
+                    <Text sx={{ fontWeight: 600 }}>{u.name}</Text>
+                    {u.vendor && (
+                      <Text size="small" color="fg.muted">
+                        · {u.vendor}
+                      </Text>
+                    )}
+                    {u.model && (
+                      <Label size="small" variant="accent">
+                        {u.model}
+                      </Label>
+                    )}
+                    {u.modelSpeedFactor && u.modelSpeedFactor >= 2 && (
+                      <Label
+                        size="small"
+                        variant="attention"
+                        title={`${u.modelSpeedFactor}× estimated token output speed`}
+                      >
+                        {u.modelSpeedFactor}× fast
+                      </Label>
+                    )}
+                  </Box>
+                  <Text size="small" color="fg.muted" sx={{ display: "block" }}>
+                    {u.authored > 0 && `${u.authored.toLocaleString()} authored`}
+                    {u.assisted > 0 &&
+                      `${u.authored > 0 ? " · " : ""}${u.assisted.toLocaleString()} assisted`}
+                    {u.suspected > 0 &&
+                      `${u.authored + u.assisted > 0 ? " · " : ""}${u.suspected.toLocaleString()} suspected`}
+                  </Text>
                 </Box>
               </Box>
-              <Box display="flex" alignItems="center" sx={{ gap: 1, flexWrap: "wrap" }}>
-                {u.authored > 0 && (
-                  <Label size="small" variant="attention">
-                    {u.authored} author
-                  </Label>
+
+              <Box display="flex" alignItems="center" sx={{ gap: 2, flexShrink: 0 }}>
+                {u.homepage && (
+                  <Link
+                    href={u.homepage}
+                    target="_blank"
+                    rel="noreferrer"
+                    sx={{ fontSize: 0, color: "fg.muted" }}
+                  >
+                    site
+                  </Link>
                 )}
-                {u.assisted > 0 && (
-                  <Label size="small" variant="sponsors">
-                    {u.assisted} helped
-                  </Label>
-                )}
-                {u.suspected > 0 && (
-                  <Label size="small" variant="severe" title="Weak style signal">
-                    {u.suspected} maybe
-                  </Label>
-                )}
-                <Text size="small" color="fg.muted" sx={{ ml: 1 }}>
-                  {hits} hit{hits === 1 ? "" : "s"}
+                <Text sx={{ fontWeight: 600, minWidth: 48, textAlign: "right" }}>
+                  {hits.toLocaleString()}
                 </Text>
               </Box>
             </Box>
           );
         })}
       </Box>
-      <Text size="small" color="fg.muted" sx={{ display: "block", mt: 2 }}>
-        Counts trailers, bot authors, branches, message style, and patch
-        tells. Any hit → AI helped. See{" "}
-        <Link
-          href="https://github.com/chaoss/disclosure"
-          target="_blank"
-          rel="noreferrer"
-          muted
-        >
-          AI commit trailers
-        </Link>
-        .
-      </Text>
     </Box>
   );
 }

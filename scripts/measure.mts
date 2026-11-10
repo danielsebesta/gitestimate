@@ -12,7 +12,7 @@ if (!p) {
 const token = process.env.GITHUB_TOKEN;
 const repo = await fetchRepo(p.owner, p.repo, token);
 const [commitsRes, paths] = await Promise.all([
-  fetchCommits(p.owner, p.repo, token, (n, t) =>
+  fetchCommits(p.owner, p.repo, undefined, token, (n, t) =>
     process.stdout.write(`\r${n} / ${t} commits`),
   ),
   fetchFilePaths(p.owner, p.repo, repo.defaultBranch, token).catch(() => [] as string[]),

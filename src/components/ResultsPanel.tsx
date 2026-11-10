@@ -70,10 +70,13 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
 export default function ResultsPanel({
   data,
   viewerLogin,
+  onRerunBranch,
 }: {
   data: DoneState;
   /** signed-in login for “You” badges on matching authors */
   viewerLogin?: string | null;
+  /** re-run the estimate for a different branch */
+  onRerunBranch?: (branch: string) => void;
 }) {
   const [authorFilter, setAuthorFilter] = useState("all");
   const [copied, setCopied] = useState<"link" | "badge" | null>(null);
@@ -180,6 +183,23 @@ export default function ResultsPanel({
         </Text>
       )}
       <Box display="flex" alignItems="center" sx={{ gap: 2, mb: 3, flexWrap: "wrap" }}>
+        {onRerunBranch && data.branches.length > 1 && (
+          <FormControl sx={{ minWidth: 160 }}>
+            <FormControl.Label visuallyHidden>Branch</FormControl.Label>
+            <Select
+              value={data.branch}
+              onChange={(e) => onRerunBranch(e.currentTarget.value)}
+              size="small"
+              disabled={data.branches.length < 2}
+            >
+              {data.branches.map((b) => (
+                <Select.Option key={b} value={b}>
+                  {b}
+                </Select.Option>
+              ))}
+            </Select>
+          </FormControl>
+        )}
         <Label variant="accent">
           <GitCommit size={12} strokeWidth={2} /> {result.commitCount.toLocaleString()} commits
         </Label>

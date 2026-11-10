@@ -2,7 +2,7 @@ import { fetchCommits, parseRepo } from "../src/lib/github.ts";
 import { detectCommit } from "../src/lib/agents.ts";
 
 const p = parseRepo(process.argv[2] ?? "torvalds/linux")!;
-const res = await fetchCommits(p.owner, p.repo, process.env.GITHUB_TOKEN);
+const res = await fetchCommits(p.owner, p.repo, undefined, process.env.GITHUB_TOKEN);
 const counts = new Map<string, number>();
 const examples = new Map<string, string>();
 for (const c of res.commits) {

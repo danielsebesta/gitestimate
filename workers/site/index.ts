@@ -19,6 +19,16 @@ interface Env {
   GITHUB_CLIENT_SECRET?: string;
 }
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Content-Security-Policy":
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://avatars.githubusercontent.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com;",
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -27,7 +37,16 @@ export default {
       return proxyOAuth(request, url, env);
     }
 
-    return env.ASSETS.fetch(request);
+    const res = await env.ASSETS.fetch(request);
+    const headers = new Headers(res.headers);
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+      headers.set(k, v);
+    }
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
   },
 };
 

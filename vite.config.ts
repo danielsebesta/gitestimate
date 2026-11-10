@@ -86,7 +86,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
     plugins: [react(), oauthDevProxy(env.GITHUB_CLIENT_SECRET || "")],
-    base: "./",
+    base: "/",
     server: {
       allowedHosts: [".trycloudflare.com"],
     },

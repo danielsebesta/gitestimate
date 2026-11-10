@@ -1,7 +1,7 @@
 import { Box, Button, FormControl, ProgressBar, Select, Spinner, Text, TextInput } from "@primer/react";
 import { Search } from "lucide-react";
 
-export type LoadPhase = "commits" | "stats" | "patches" | "charts";
+export type LoadPhase = "repo" | "commits" | "stats" | "patches" | "charts";
 
 export interface FetchProgress {
   phase: LoadPhase;
@@ -12,6 +12,7 @@ export interface FetchProgress {
 }
 
 const PHASE_LABEL: Record<LoadPhase, string> = {
+  repo: "Reading repository",
   commits: "Loading commits",
   stats: "Loading diff sizes",
   patches: "Sampling patches",
@@ -33,7 +34,7 @@ interface RepoFormProps {
   onBranchChange: (branch: string) => void;
 }
 
-const EXAMPLES = ["danielsebesta/web", "danielsebesta/PaperBoat", "onlook-dev/onlook"];
+const EXAMPLES = ["onlook-dev/onlook", "facebook/react", "vercel/next.js"];
 
 function progressPercent(done: number, total: number): number {
   if (total <= 0) return done > 0 ? 100 : 0;
@@ -115,6 +116,7 @@ export default function RepoForm({
             sx={{ height: 8 }}
           />
           <Text size="small" color="fg.muted" sx={{ display: "block", mt: 2, fontSize: 11 }}>
+            {progress?.phase === "repo" && "Reading repository"}
             {progress?.phase === "commits" && "Loading commits"}
             {progress?.phase === "stats" && "Loading diff sizes"}
             {progress?.phase === "patches" && "Sampling patches for AI signals"}

@@ -9,7 +9,13 @@ import {
   PageLayout,
   Text,
 } from "@primer/react";
-import { Clock, Code2, Monitor, Moon, Sun } from "lucide-react";
+import {
+  ClockIcon,
+  DeviceDesktopIcon,
+  MarkGithubIcon,
+  MoonIcon,
+  SunIcon,
+} from "@primer/octicons-react";
 import {
   enrichCommitPatches,
   enrichCommitStats,
@@ -73,7 +79,7 @@ function parseToken(): string | undefined {
 
 type Mode = "auto" | "light" | "dark";
 const MODE_ORDER: Mode[] = ["auto", "light", "dark"];
-const MODE_ICON = { auto: Monitor, light: Sun, dark: Moon } as const;
+const MODE_ICON = { auto: DeviceDesktopIcon, light: SunIcon, dark: MoonIcon } as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -89,50 +95,27 @@ export default function App() {
 
   const [input, setInput] = useState("");
   const [token, setToken] = useState<string>(() => parseToken() ?? "");
+  const [user, setUser] = useState<GitHubUser | null>(null);
+  const [userLoading, setUserLoading] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [deviceAuth, setDeviceAuth] = useState<DeviceAuth | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [exchanging, setExchanging] = useState(false);
-  const [user, setUser] = useState<GitHubUser | null>(null);
-  const [userLoading, setUserLoading] = useState(false);
-  const authAbort = useRef<AbortController | null>(null);
   const runAbort = useRef<AbortController | null>(null);
+  const authAbort = useRef<AbortController | null>(null);
 
-  // Resolve GitHub profile whenever the token changes
-  useEffect(() => {
-    const t = token.trim();
-    if (!t) {
-      setUser(null);
-      setUserLoading(false);
-      return;
-    }
-    const abort = new AbortController();
-    setUserLoading(true);
-    void (async () => {
-      try {
-        const u = await fetchViewer(t, abort.signal);
-        if (!abort.signal.aborted) setUser(u);
-      } catch {
-        if (!abort.signal.aborted) setUser(null);
-      } finally {
-        if (!abort.signal.aborted) setUserLoading(false);
-      }
-    })();
-    return () => abort.abort();
-  }, [token]);
-
-  const requireClientId = useCallback((): string | null => {
-    const clientId = oauthClientId();
-    if (!clientId) {
+  const requireClientId = useCallback(() => {
+    const id = oauthClientId();
+    if (!id) {
       setAuthError(
-        "No OAuth app configured — set VITE_GITHUB_CLIENT_ID (or ?oauth_client_id=), see README.",
+        "OAuth not configured. Set VITE_GITHUB_CLIENT_ID in .env or paste a personal token.",
       );
       return null;
     }
-    return clientId;
+    return id;
   }, []);
 
-  /** Primary: redirect to GitHub authorize. */
+  /** Preferred: redirect to GitHub for 1-click authorize. */
   const signIn = useCallback(() => {
     const clientId = requireClientId();
     if (!clientId) return;
@@ -223,6 +206,30 @@ export default function App() {
     setStatus({ kind: "idle" });
   }, []);
 
+  // Resolve GitHub profile whenever the token changes
+  useEffect(() => {
+    const t = token.trim();
+    if (!t) {
+      setUser(null);
+      return;
+    }
+    let cancelled = false;
+    setUserLoading(true);
+    void fetchViewer(t)
+      .then((u) => {
+        if (!cancelled) setUser(u);
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setUserLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const runFor = useCallback(
     async (target?: string, branch?: string) => {
       const parsed = parseRepo(target ?? input);
@@ -235,33 +242,31 @@ export default function App() {
       const abort = new AbortController();
       runAbort.current = abort;
       const { signal } = abort;
+
       const setLoad = (phase: LoadPhase, done: number, total: number, repoTotal?: number) => {
-        if (!signal.aborted)
-          setStatus({
-            kind: "loading",
-            phase,
-            done,
-            total: Math.max(total, 0),
-            repoTotal,
-          });
+        if (!signal.aborted) setStatus({ kind: "loading", phase, done, total, repoTotal });
       };
-      setStatus({ kind: "loading", phase: "commits", done: 0, total: 0 });
+
+      setLoad("repo", 1, 1);
+      const t = token.trim() || undefined;
+
       try {
-        const t = token.trim() || undefined;
         const repo = await fetchRepo(parsed.owner, parsed.repo, t, signal);
+        if (signal.aborted) return;
         const sha = branch ?? repo.defaultBranch;
-        const [commitsRes, paths, languages, branches] = await Promise.all([
-          fetchCommits(
-            parsed.owner,
-            parsed.repo,
-            t,
-            (done, target, repoTotal) => setLoad("commits", done, target, repoTotal),
-            { sha, signal },
-          ),
+        const commitsRes = await fetchCommits(
+          parsed.owner,
+          parsed.repo,
+          sha,
+          t,
+          (done, total) => setLoad("commits", done, total),
+          signal,
+        );
+        if (signal.aborted) return;
+        // tree + languages + branches can be fetched concurrently
+        const [paths, languages, branches] = await Promise.all([
           fetchFilePaths(parsed.owner, parsed.repo, sha, t, signal).catch(() => [] as string[]),
-          fetchLanguages(parsed.owner, parsed.repo, t, signal).catch(
-            () => ({}) as Record<string, number>,
-          ),
+          fetchLanguages(parsed.owner, parsed.repo, t, signal).catch(() => ({})),
           fetchBranches(parsed.owner, parsed.repo, t, signal).catch(() => [] as string[]),
         ]);
         if (signal.aborted) return;
@@ -282,11 +287,10 @@ export default function App() {
           commitsRes.commits,
           t,
           signal,
-          (done, total) => setLoad("patches", done, total, commitsRes.totalCommits),
         ).catch(() => 0);
         if (signal.aborted) return;
-        setLoad("charts", 0, 1, commitsRes.totalCommits);
-        // stats endpoints are computed async — retry once
+        // fetch code frequency stats (weeks of adds/dels). GitHub calculates asynchronously;
+        // if 202 is returned, retry once after a short delay.
         let codeFreq = await fetchCodeFrequency(parsed.owner, parsed.repo, t, signal).catch(
           () => null,
         );
@@ -295,8 +299,8 @@ export default function App() {
           if (signal.aborted) return;
           codeFreq = await fetchCodeFrequency(parsed.owner, parsed.repo, t, signal).catch(() => null);
         }
-        setLoad("charts", 1, 1, commitsRes.totalCommits);
         if (signal.aborted) return;
+
         setStatus({
           kind: "done",
           data: {
@@ -349,7 +353,7 @@ export default function App() {
       <PageLayout.Header>
         <Box display="flex" alignItems="center" justifyContent="space-between" py={3}>
           <Box display="flex" alignItems="center" sx={{ gap: 2 }}>
-            <Clock size={24} strokeWidth={2} />
+            <ClockIcon size={24} />
             <Heading as="h1" sx={{ fontSize: 3, fontWeight: 600 }}>
               GitEstimate
             </Heading>
@@ -367,7 +371,7 @@ export default function App() {
               href={REPO_URL}
               target="_blank"
               rel="noreferrer"
-              icon={Code2}
+              icon={MarkGithubIcon}
               aria-label="GitEstimate on GitHub"
               variant="invisible"
             />
@@ -416,25 +420,25 @@ export default function App() {
           )}
 
           {status.kind === "done" && (
-            <ResultsPanel data={status.data} viewerLogin={user?.login} />
+            <ResultsPanel
+              data={status.data}
+              viewerLogin={user?.login}
+              onRerunBranch={rerunBranch}
+            />
           )}
         </Box>
       </PageLayout.Content>
 
-      <PageLayout.Footer divider="line">
+      <PageLayout.Footer>
         <Box
-          display="flex"
-          justifyContent="space-between"
-          py={3}
-          sx={{ flexWrap: "wrap", gap: 1, px: [3, 0] }}
+          textAlign="center"
+          py={4}
+          sx={{ borderTop: "1px solid", borderColor: "border.muted", mt: 6 }}
         >
           <Text size="small" color="fg.muted">
-            MIT · runs in your browser · not affiliated with GitHub
-          </Text>
-          <Text size="small" color="fg.muted">
-            GitEstimate · built by{" "}
-            <Link href="https://sebesta.dev" target="_blank" rel="noreferrer" muted>
-              Daniel Šebesta
+            GitEstimate runs entirely in your browser ·{" "}
+            <Link href={REPO_URL} target="_blank" rel="noreferrer">
+              view source on GitHub
             </Link>
           </Text>
         </Box>

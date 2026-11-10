@@ -1,3 +1,5 @@
+import { DEFAULT_OUTPUT_TOK_S, modelOutputSpeed } from "./models";
+
 /**
  * AI-agent authorship detection — aggressive by design.
  * Any clear sign → "assisted" (or "authored" for bot identities).
@@ -35,6 +37,10 @@ export interface AgentSignal {
 export interface AgentTool {
   id: string;
   name: string;
+  /** company behind the tool, shown next to the name */
+  vendor?: string;
+  /** tool homepage, when known */
+  homepage?: string;
   /**
    * GitHub App integration id — avatars live at
    * `avatars.githubusercontent.com/in/{id}` (not `/u/`, which is a user).
@@ -53,6 +59,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "claude",
     name: "Claude",
+    vendor: "Anthropic",
+    homepage: "https://claude.com/product/claude-code",
     // Bot avatars are GitHub App icons (/in/…); /u/{botUserId} is an empty Identicon.
     githubAppId: 1236702,
     githubUserId: 209825114,
@@ -62,6 +70,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "copilot",
     name: "GitHub Copilot",
+    vendor: "GitHub",
+    homepage: "https://github.com/features/copilot",
     githubAppId: 1143301,
     githubUserId: 198982749,
     githubLogin: "copilot",
@@ -70,6 +80,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "cursor",
     name: "Cursor",
+    vendor: "Anysphere",
+    homepage: "https://cursor.com",
     githubUserId: 199161495,
     githubLogin: "cursoragent",
     match: /cursor|cursoragent|noreply@cursor\.com/i,
@@ -77,6 +89,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "codex",
     name: "OpenAI Codex",
+    vendor: "OpenAI",
+    homepage: "https://openai.com/codex",
     githubAppId: 1144995,
     githubUserId: 199175422,
     githubLogin: "chatgpt-codex-connector",
@@ -85,6 +99,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "devin",
     name: "Devin",
+    vendor: "Cognition",
+    homepage: "https://devin.ai",
     githubAppId: 811515,
     githubUserId: 158243242,
     githubLogin: "devin-ai-integration",
@@ -93,6 +109,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "gemini",
     name: "Gemini",
+    vendor: "Google",
+    homepage: "https://jules.google",
     githubAppId: 842251,
     githubUserId: 161369871,
     githubLogin: "google-labs-jules",
@@ -101,6 +119,8 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "amazon-q",
     name: "Amazon Q",
+    vendor: "AWS",
+    homepage: "https://aws.amazon.com/q/developer/",
     githubAppId: 1220912,
     githubUserId: 208079219,
     match: /amazon-q|codewhisperer/i,
@@ -108,123 +128,169 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "aider",
     name: "Aider",
+    homepage: "https://aider.chat",
     match: /aider|noreply@aider\.chat|\(aider\)/i,
   },
   {
     id: "cline",
     name: "Cline",
+    homepage: "https://cline.bot",
     githubUserId: 205137888,
     match: /cline/i,
   },
   {
     id: "continue",
     name: "Continue",
+    homepage: "https://continue.dev",
     githubUserId: 230936708,
     match: /continue\.dev|continue\[bot\]|noreply@continue\.dev/i,
   },
   {
     id: "cody",
     name: "Cody",
+    vendor: "Sourcegraph",
+    homepage: "https://sourcegraph.com/cody",
     githubUserId: 201248094,
     match: /cody|sourcegraph/i,
   },
   {
     id: "openhands",
     name: "OpenHands",
+    homepage: "https://github.com/All-Hands-AI/OpenHands",
     match: /openhands|all-hands\.dev/i,
   },
   {
     id: "windsurf",
     name: "Windsurf",
+    homepage: "https://windsurf.com",
     match: /windsurf|codeium|noreply@windsurf/i,
   },
   {
     id: "jetbrains",
     name: "JetBrains AI",
+    vendor: "JetBrains",
+    homepage: "https://www.jetbrains.com/junie/",
     githubUserId: 220155983,
     match: /jetbrains|junie/i,
   },
   {
     id: "coderabbit",
     name: "CodeRabbit",
+    homepage: "https://coderabbit.ai",
     githubUserId: 136622811,
     match: /coderabbit/i,
   },
   {
     id: "qodo",
     name: "Qodo",
+    homepage: "https://qodo.ai",
     githubUserId: 151058649,
-    match: /qodo|codiumai|pr-agent/i,
+    match: /qodo|codiumai|codium\b|pr-agent/i,
   },
   {
     id: "lovable",
     name: "Lovable",
+    homepage: "https://lovable.dev",
     match: /lovable/i,
   },
   {
     id: "replit",
     name: "Replit",
+    homepage: "https://replit.com",
     match: /replit/i,
   },
   {
     id: "amp",
     name: "Amp",
+    homepage: "https://ampcode.com",
     match: /ampcode|amp-thread/i,
   },
   {
     id: "codebuff",
     name: "Codebuff",
+    homepage: "https://codebuff.com",
     match: /codebuff|freebuff/i,
   },
   {
     id: "swe-agent",
     name: "SWE-Agent",
+    homepage: "https://swe-agent.com",
     match: /swe-agent/i,
   },
   {
     id: "roo",
     name: "Roo Code",
+    homepage: "https://roocode.com",
     match: /roo[-_]?code|\.roo/i,
   },
   {
     id: "tabnine",
     name: "Tabnine",
+    homepage: "https://tabnine.com",
     match: /tabnine/i,
   },
   {
     id: "greptile",
     name: "Greptile",
+    homepage: "https://greptile.com",
     match: /greptile/i,
   },
   {
     id: "augment",
     name: "Augment",
+    homepage: "https://augmentcode.com",
     match: /augment/i,
   },
   {
     id: "trae",
     name: "Trae",
+    homepage: "https://trae.ai",
     match: /trae/i,
   },
   {
     id: "v0",
     name: "v0",
+    vendor: "Vercel",
+    homepage: "https://v0.dev",
     match: /\bv0\b|v0\.dev|vercel/i,
   },
   {
     id: "bolt",
     name: "Bolt",
+    vendor: "StackBlitz",
+    homepage: "https://bolt.new",
     match: /\bbolt\.new\b|\bstackblitz\b/i,
   },
   {
     id: "factory",
     name: "Factory",
+    homepage: "https://factory.ai",
     match: /\bfactory\.ai\b|\bdroid\b/i,
   },
   {
     id: "opencode",
     name: "OpenCode",
+    homepage: "https://opencode.ai",
     match: /opencode|noreply@opencode\.ai/i,
+  },
+  {
+    id: "qwen",
+    name: "Qwen Code",
+    vendor: "Alibaba",
+    homepage: "https://github.com/QwenLM/qwen-code",
+    match: /qwen/i,
+  },
+  {
+    id: "kilocode",
+    name: "Kilo Code",
+    homepage: "https://kilocode.ai",
+    match: /kilocode/i,
+  },
+  {
+    id: "sourcery",
+    name: "Sourcery",
+    homepage: "https://sourcery.ai",
+    match: /sourcery/i,
   },
   {
     id: "generic-bot",
@@ -268,18 +334,48 @@ export function toolAvatarUrl(tool: AgentTool, size = 80): string | undefined {
 }
 
 export function resolveTool(text: string): AgentTool | undefined {
-  return AGENT_TOOLS.find((t) => t.id !== "generic-bot" && t.match.test(text))
-    ?? (AGENT_TOOLS.find((t) => t.id === "generic-bot" && t.match.test(text)));
+  return (
+    AGENT_TOOLS.find((t) => t.id !== "generic-bot" && t.match.test(text)) ??
+    AGENT_TOOLS.find((t) => t.id === "generic-bot" && t.match.test(text)) ??
+    // hints are catalog ids — resolve them directly ("generic-bot" included)
+    AGENT_TOOLS.find((t) => t.id === text)
+  );
+}
+
+/**
+ * Scan free text (commit message, trailer value, patch comment) for any known
+ * tool brand. `resolveTool` alone fails when a pattern matched on context —
+ * e.g. "🤖 Generated with [Claude Code]" hits a generic "generated with …"
+ * pattern — leaving the signal attributed to the generic bucket even though
+ * the text names the tool. Brand scan runs first; the generic-bot catch-all
+ * only applies when nothing specific matched.
+ */
+export function resolveToolFromText(text: string): AgentTool | undefined {
+  if (!text) return undefined;
+  const specific = AGENT_TOOLS.find((t) => t.id !== "generic-bot" && t.match.test(text));
+  if (specific) return specific;
+  return AGENT_TOOLS.find((t) => t.id === "generic-bot" && t.match.test(text));
 }
 
 function decorate(
   partial: Omit<AgentSignal, "confidence" | "tool" | "toolId" | "avatarUrl"> & {
     confidence?: SignalConfidence;
     toolHint?: string;
+    /** free text to brand-scan when the hint alone doesn't resolve a tool */
+    hintText?: string;
   },
 ): AgentSignal {
   const hint = partial.toolHint ?? partial.marker;
-  const tool = resolveTool(hint);
+  const tool =
+    resolveTool(hint) ??
+    (partial.hintText ? resolveToolFromText(partial.hintText) : undefined);
+  if (tool?.id === "generic-bot" && partial.hintText) {
+    // the catch-all matched context, not a brand — scan the source text
+    const specific = resolveToolFromText(partial.hintText);
+    if (specific && specific.id !== "generic-bot") {
+      return decorate({ ...partial, toolHint: specific.id });
+    }
+  }
   return {
     strength: partial.strength,
     via: partial.via,
@@ -335,11 +431,11 @@ const AUTHOR_PATTERNS: Array<{ re: RegExp; hint: string }> = [
   { re: /codiumai|pr-agent-pro|qodo/i, hint: "qodo" },
   { re: /gemini-code-assist/i, hint: "gemini" },
   { re: /lovable-dev/i, hint: "lovable" },
-  { re: /sourcery-ai/i, hint: "generic-bot" },
+  { re: /sourcery-ai/i, hint: "sourcery" },
   { re: /greptile/i, hint: "greptile" },
   { re: /tabnine/i, hint: "tabnine" },
   { re: /augmentcode|augment-agent/i, hint: "augment" },
-  { re: /kilocode/i, hint: "generic-bot" },
+  { re: /kilocode/i, hint: "kilocode" },
   { re: /roo[-_]?code/i, hint: "roo" },
   { re: /trae[-_]agent/i, hint: "trae" },
   { re: /seer-by-sentry/i, hint: "generic-bot" },
@@ -479,6 +575,8 @@ export function analyzePatchCommentDensity(patch: string): {
   density: number;
   teachingComments: number;
   aiMarkerComments: number;
+  /** bodies of AI-marker comment lines — brand-scanned for tool attribution */
+  markerSamples: string[];
   newFiles: number;
   deletedLines: number;
 } {
@@ -488,6 +586,8 @@ export function analyzePatchCommentDensity(patch: string): {
   let aiMarkerComments = 0;
   let newFiles = 0;
   let deletedLines = 0;
+  /** bodies of AI-marker comment lines — brand-scanned for tool attribution */
+  const markerSamples: string[] = [];
   const teach =
     /\b(?:this (?:function|method|class|ensures|handles)|in order to|note that|important:|we (?:need|want|ensure)|ensures that|for (?:clarity|readability|maintainability))\b/i;
   const aiMark =
@@ -511,9 +611,13 @@ export function analyzePatchCommentDensity(patch: string): {
     if (isComment) {
       commentLines++;
       if (teach.test(body)) teachingComments++;
-      if (aiMark.test(body)) aiMarkerComments++;
+      if (aiMark.test(body)) {
+        aiMarkerComments++;
+        if (markerSamples.length < 10) markerSamples.push(body);
+      }
     } else if (aiMark.test(body)) {
       aiMarkerComments++;
+      if (markerSamples.length < 10) markerSamples.push(body);
     }
   }
   return {
@@ -522,6 +626,7 @@ export function analyzePatchCommentDensity(patch: string): {
     density: added ? commentLines / added : 0,
     teachingComments,
     aiMarkerComments,
+    markerSamples,
     newFiles,
     deletedLines,
   };
@@ -529,7 +634,7 @@ export function analyzePatchCommentDensity(patch: string): {
 
 /** Explicit AI markers inside the patch body. */
 export function detectPatchAiMarkers(patch: string): AgentSignal | null {
-  const { aiMarkerComments, added } = analyzePatchCommentDensity(patch);
+  const { aiMarkerComments, added, markerSamples } = analyzePatchCommentDensity(patch);
   if (aiMarkerComments >= 1 && added >= 3) {
     return decorate({
       strength: "assisted",
@@ -537,6 +642,7 @@ export function detectPatchAiMarkers(patch: string): AgentSignal | null {
       marker: `ai-comment-marker ×${aiMarkerComments}`,
       confidence: "medium",
       toolHint: "generic-bot",
+      hintText: markerSamples.join("\n"),
     });
   }
   return null;
@@ -581,7 +687,8 @@ export function detectPatchStyle(patch: string): AgentSignal | null {
   const bulk = detectPatchBulk(patch);
   if (bulk) return bulk;
 
-  const { added, density, teachingComments, commentLines } = analyzePatchCommentDensity(patch);
+  const { added, density, teachingComments, commentLines, markerSamples } =
+    analyzePatchCommentDensity(patch);
   if (added < 8) return null;
   // Aggressive: any teaching comments, or modest density
   if (
@@ -596,6 +703,7 @@ export function detectPatchStyle(patch: string): AgentSignal | null {
       marker: `comment-density ${(density * 100).toFixed(0)}% (${commentLines}/${added})`,
       confidence: teachingComments >= 2 || density >= 0.35 ? "medium" : "low",
       toolHint: teachingComments >= 1 ? "claude" : "generic-bot",
+      hintText: markerSamples.join("\n"),
     });
   }
   return null;
@@ -654,6 +762,7 @@ function fromTrailerLine(
       via: "trailer",
       marker: `co-author ${matched?.hint ?? tool?.id ?? value.slice(0, 40)}`,
       toolHint: matched?.hint ?? tool?.id ?? value,
+      hintText: value,
       model,
       confidence: tool || matched ? "high" : "medium",
     });
@@ -667,6 +776,7 @@ function fromTrailerLine(
     via: "trailer",
     marker: `${kind}: ${value.slice(0, 80)}`,
     toolHint: tool?.id ?? value,
+    hintText: value,
     model,
     confidence: "high",
   });
@@ -738,6 +848,7 @@ export function detectCommit(
         via: "trailer",
         marker: m.re.source,
         toolHint: m.hint,
+        hintText: fields.message,
       });
   }
 
@@ -820,11 +931,19 @@ export function detectFiles(paths: string[]): string[] {
 export interface AgentUsage {
   toolId: string;
   name: string;
+  /** company behind the tool, when known */
+  vendor?: string;
+  /** tool homepage, when known */
+  homepage?: string;
   avatarUrl?: string;
   authored: number;
   assisted: number;
   suspected: number;
   models: string[];
+  /** dominant model (first seen) — shown as a badge */
+  model?: string;
+  /** dominant model's output speed vs the human-default baseline */
+  modelSpeedFactor?: number;
   /** example markers for transparency */
   samples: string[];
 }
@@ -848,11 +967,14 @@ export function summarizeAgents(
     for (const s of signals) {
       const id = s.toolId ?? "unknown";
       const name = s.tool ?? "Unknown AI";
+      const catalogTool = AGENT_TOOLS.find((t) => t.id === id);
       const entry =
         map.get(id) ??
         ({
           toolId: id,
           name,
+          vendor: catalogTool?.vendor,
+          homepage: catalogTool?.homepage,
           avatarUrl: s.avatarUrl,
           authored: 0,
           assisted: 0,
@@ -870,7 +992,17 @@ export function summarizeAgents(
       map.set(id, entry);
     }
   }
-  return [...map.values()].sort(
+  const usage = [...map.values()];
+  for (const u of usage) {
+    const model = u.models[0];
+    if (model) {
+      u.model = model;
+      const speed = modelOutputSpeed(model);
+      if (speed > DEFAULT_OUTPUT_TOK_S)
+        u.modelSpeedFactor = Math.round((speed / DEFAULT_OUTPUT_TOK_S) * 10) / 10;
+    }
+  }
+  return usage.sort(
     (a, b) => b.authored + b.assisted + b.suspected - (a.authored + a.assisted + a.suspected),
   );
 }

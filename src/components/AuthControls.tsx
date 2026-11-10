@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { Box, Button, Flash, FormControl, Label, Link, Text, TextInput } from "@primer/react";
-import { Check, Code2, Key, LogOut, Monitor } from "lucide-react";
+import {
+  CheckIcon,
+  DeviceDesktopIcon,
+  KeyIcon,
+  MarkGithubIcon,
+  SignOutIcon,
+} from "@primer/octicons-react";
 import type { GitHubUser } from "../lib/github";
 
 export interface DeviceAuth {
@@ -80,7 +86,7 @@ export default function AuthControls({
                 flexShrink: 0,
               }}
             >
-              <Check size={12} strokeWidth={2.5} />
+              <CheckIcon size={12} />
             </Box>
             {user?.avatarUrl ? (
               <Box
@@ -138,7 +144,7 @@ export default function AuthControls({
             </Box>
           </Box>
           <Button
-            leadingVisual={LogOut}
+            leadingVisual={SignOutIcon}
             onClick={onSignOut}
             size="small"
             sx={{ flexShrink: 0 }}
@@ -159,7 +165,7 @@ export default function AuthControls({
     <>
       <Box display="flex" sx={{ gap: 2, mt: 3, flexWrap: "wrap" }}>
         <Button
-          leadingVisual={Code2}
+          leadingVisual={MarkGithubIcon}
           onClick={onSignIn}
           disabled={locked}
           size="small"
@@ -169,7 +175,7 @@ export default function AuthControls({
           {exchanging ? "Signing in…" : "Sign in with GitHub"}
         </Button>
         <Button
-          leadingVisual={Monitor}
+          leadingVisual={DeviceDesktopIcon}
           onClick={onDeviceSignIn}
           disabled={locked}
           size="small"
@@ -178,7 +184,7 @@ export default function AuthControls({
           Device code
         </Button>
         <Button
-          leadingVisual={Key}
+          leadingVisual={KeyIcon}
           onClick={() => setManualOpen((v) => !v)}
           disabled={locked}
           size="small"
@@ -194,7 +200,7 @@ export default function AuthControls({
           <FormControl sx={{ flex: "1 1 220px", minWidth: 0 }}>
             <FormControl.Label visuallyHidden>GitHub token</FormControl.Label>
             <TextInput
-              leadingVisual={Key}
+              leadingVisual={KeyIcon}
               placeholder="ghp_… or fine-grained PAT"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -238,24 +244,40 @@ export default function AuthControls({
       )}
 
       {deviceAuth && (
-        <Flash variant="default" sx={{ mt: 3 }}>
-          <Box display="flex" alignItems="center" sx={{ gap: 3, flexWrap: "wrap" }}>
-            <Text>
-              Authorize at{" "}
-              <a href={deviceAuth.verificationUri} target="_blank" rel="noreferrer">
-                {deviceAuth.verificationUri}
-              </a>{" "}
-              with code
-            </Text>
-            <Text sx={{ fontFamily: "mono", fontWeight: 600, fontSize: 2 }}>
-              {deviceAuth.userCode}
-            </Text>
-            <Button size="small" variant="invisible" onClick={onCancelDevice}>
+        <Flash variant="warning" sx={{ mt: 3 }}>
+          <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ gap: 2 }}>
+            <Box>
+              <Text sx={{ fontWeight: 600 }}>Authorize GitEstimate on GitHub</Text>
+              <Text size="small" sx={{ display: "block" }}>
+                Enter code{" "}
+                <Text
+                  as="strong"
+                  sx={{
+                    fontFamily: "mono",
+                    fontSize: 2,
+                    letterSpacing: "0.1em",
+                    px: 1,
+                    py: "2px",
+                    bg: "canvas.default",
+                    borderRadius: 1,
+                  }}
+                >
+                  {deviceAuth.userCode}
+                </Text>{" "}
+                at{" "}
+                <Link href={deviceAuth.verificationUri} target="_blank" rel="noreferrer">
+                  {deviceAuth.verificationUri}
+                </Link>
+                . Waiting for authorization…
+              </Text>
+            </Box>
+            <Button size="small" onClick={onCancelDevice}>
               Cancel
             </Button>
           </Box>
         </Flash>
       )}
+
       {authError && (
         <Flash variant="danger" sx={{ mt: 3 }}>
           {authError}
@@ -264,3 +286,4 @@ export default function AuthControls({
     </>
   );
 }
+
