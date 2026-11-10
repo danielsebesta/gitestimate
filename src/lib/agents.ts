@@ -80,7 +80,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "cursor",
     name: "Cursor",
-    vendor: "Anysphere",
+    vendor: "SpaceXAI",
     homepage: "https://cursor.com",
     githubUserId: 199161495,
     githubLogin: "cursoragent",
@@ -97,9 +97,16 @@ export const AGENT_TOOLS: AgentTool[] = [
     match: /codex|chatgpt-codex|noreply@openai\.com|openai-codex/i,
   },
   {
+    id: "grok",
+    name: "Grok Build",
+    vendor: "xAI",
+    homepage: "https://x.ai",
+    match: /\bgrok\b|grok[-_]?(?:cli|build|code)|x\.ai|xai/i,
+  },
+  {
     id: "devin",
     name: "Devin",
-    vendor: "Cognition",
+    vendor: "Cognition AI",
     homepage: "https://devin.ai",
     githubAppId: 811515,
     githubUserId: 158243242,
@@ -115,6 +122,13 @@ export const AGENT_TOOLS: AgentTool[] = [
     githubUserId: 161369871,
     githubLogin: "google-labs-jules",
     match: /gemini|google-labs-jules|jules/i,
+  },
+  {
+    id: "jules",
+    name: "Jules",
+    vendor: "Google",
+    homepage: "https://jules.google",
+    match: /\bjules\b/i,
   },
   {
     id: "amazon-q",
@@ -162,6 +176,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "windsurf",
     name: "Windsurf",
+    vendor: "Cognition",
     homepage: "https://windsurf.com",
     match: /windsurf|codeium|noreply@windsurf/i,
   },
