@@ -26,7 +26,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Content-Security-Policy":
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://avatars.githubusercontent.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com;",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://avatars.githubusercontent.com https://github.com https://github.githubassets.com; connect-src 'self' https://api.github.com https://github.com;",
 };
 
 export default {
