@@ -101,6 +101,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Grok Build",
     vendor: "xAI",
     homepage: "https://x.ai",
+    githubLogin: "xai",
     match: /\bgrok\b|grok[-_]?(?:cli|build|code)|x\.ai|xai/i,
   },
   {
@@ -128,6 +129,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Jules",
     vendor: "Google",
     homepage: "https://jules.google",
+    githubLogin: "google",
     match: /\bjules\b/i,
   },
   {
@@ -142,7 +144,9 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "aider",
     name: "Aider",
+    vendor: "Aider AI",
     homepage: "https://aider.chat",
+    githubLogin: "Aider-AI",
     match: /aider|noreply@aider\.chat|\(aider\)/i,
   },
   {
@@ -170,7 +174,9 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     id: "openhands",
     name: "OpenHands",
+    vendor: "All Hands AI",
     homepage: "https://github.com/All-Hands-AI/OpenHands",
+    githubLogin: "All-Hands-AI",
     match: /openhands|all-hands\.dev/i,
   },
   {
@@ -178,6 +184,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Windsurf",
     vendor: "Cognition",
     homepage: "https://windsurf.com",
+    githubLogin: "Windsurf",
     match: /windsurf|codeium|noreply@windsurf/i,
   },
   {
@@ -206,60 +213,74 @@ export const AGENT_TOOLS: AgentTool[] = [
     id: "lovable",
     name: "Lovable",
     homepage: "https://lovable.dev",
+    githubLogin: "lovable",
     match: /lovable/i,
   },
   {
     id: "replit",
     name: "Replit",
     homepage: "https://replit.com",
+    githubLogin: "replit",
     match: /replit/i,
   },
   {
     id: "amp",
     name: "Amp",
+    vendor: "Sourcegraph",
     homepage: "https://ampcode.com",
+    githubLogin: "ampcode",
     match: /ampcode|amp-thread/i,
   },
   {
     id: "codebuff",
     name: "Codebuff",
     homepage: "https://codebuff.com",
+    githubLogin: "CodebuffAI",
     match: /codebuff|freebuff/i,
   },
   {
     id: "swe-agent",
     name: "SWE-Agent",
+    vendor: "Princeton NLP",
     homepage: "https://swe-agent.com",
+    githubLogin: "SWE-agent",
     match: /swe-agent/i,
   },
   {
     id: "roo",
     name: "Roo Code",
     homepage: "https://roocode.com",
+    githubLogin: "RooCodeInc",
     match: /roo[-_]?code|\.roo/i,
   },
   {
     id: "tabnine",
     name: "Tabnine",
     homepage: "https://tabnine.com",
+    githubLogin: "codota",
     match: /tabnine/i,
   },
   {
     id: "greptile",
     name: "Greptile",
     homepage: "https://greptile.com",
+    githubLogin: "greptile",
     match: /greptile/i,
   },
   {
     id: "augment",
     name: "Augment",
+    vendor: "Augment Code",
     homepage: "https://augmentcode.com",
+    githubLogin: "augmentcode",
     match: /augment/i,
   },
   {
     id: "trae",
     name: "Trae",
+    vendor: "ByteDance",
     homepage: "https://trae.ai",
+    githubLogin: "bytedance",
     match: /trae/i,
   },
   {
@@ -267,6 +288,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "v0",
     vendor: "Vercel",
     homepage: "https://v0.dev",
+    githubLogin: "vercel",
     match: /\bv0\b|v0\.dev|vercel/i,
   },
   {
@@ -274,18 +296,22 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Bolt",
     vendor: "StackBlitz",
     homepage: "https://bolt.new",
+    githubLogin: "stackblitz-labs",
     match: /\bbolt\.new\b|\bstackblitz\b/i,
   },
   {
     id: "factory",
     name: "Factory",
     homepage: "https://factory.ai",
+    githubLogin: "Factory-AI",
     match: /\bfactory\.ai\b|\bdroid\b/i,
   },
   {
     id: "opencode",
     name: "OpenCode",
+    vendor: "Anomaly",
     homepage: "https://opencode.ai",
+    githubLogin: "anomalyco",
     match: /opencode|noreply@opencode\.ai/i,
   },
   {
@@ -293,18 +319,21 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Qwen Code",
     vendor: "Alibaba",
     homepage: "https://github.com/QwenLM/qwen-code",
+    githubLogin: "QwenLM",
     match: /qwen/i,
   },
   {
     id: "kilocode",
     name: "Kilo Code",
     homepage: "https://kilocode.ai",
+    githubLogin: "Kilo-Org",
     match: /kilocode/i,
   },
   {
     id: "sourcery",
     name: "Sourcery",
     homepage: "https://sourcery.ai",
+    githubLogin: "sourcery-ai",
     match: /sourcery/i,
   },
   {
@@ -313,6 +342,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     vendor: "Mistral AI",
     homepage: "https://mistral.ai/products/vibe/",
     // Co-Authored-By: Mistral Vibe <vibe@mistral.ai>
+    githubLogin: "mistralai",
     match: /mistral[- ]?vibe|vibe@mistral\.ai|\bvibe\s*(?:cli|code)\b/i,
   },
   {
@@ -320,6 +350,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Antigravity",
     vendor: "Google",
     homepage: "https://antigravity.google",
+    githubLogin: "google-antigravity",
     match: /antigravity|anti-gravity/i,
   },
   {
@@ -327,6 +358,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Kiro",
     vendor: "AWS",
     homepage: "https://kiro.dev",
+    githubLogin: "kirodotdev",
     match: /\bkiro\b|kirodotdev/i,
   },
   {
@@ -334,6 +366,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Goose",
     vendor: "Block",
     homepage: "https://block.github.io/goose",
+    githubLogin: "block",
     match: /\bgoose\b|aaif-goose/i,
   },
   {
@@ -341,6 +374,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     name: "Warp",
     vendor: "Warp",
     homepage: "https://warp.dev",
+    githubLogin: "warpdotdev",
     match: /\bwarp\b|warpdotdev/i,
   },
   {
@@ -349,6 +383,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     vendor: "Charm",
     homepage: "https://charm.land",
     // Assisted-by: Crush:[ModelID] / Co-Authored-By: Crush <crush@charm.land>
+    githubLogin: "charmbracelet",
     match: /\bcrush\b|crush@charm\.land|charmbracelet/i,
   },
   {
